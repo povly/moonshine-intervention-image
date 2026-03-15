@@ -80,9 +80,11 @@ InterventionImage::make('Gallery', 'gallery')
 | `stripMetadata(bool $strip = true)`               | Strip EXIF/IPTC metadata from images     |
 | `maxDimensions(?int $width, ?int $height = null)` | Resize images while keeping aspect ratio |
 
-## Multiple Images with AJAX Deletion (Layouts)
+## Multiple Images with AJAX Deletion
 
-When using `multiple()` images inside Layouts (JSON fields), you need to handle AJAX deletion of converted files (WebP/AVIF). Create a base resource with the deletion method:
+When using `multiple()` images with WebP/AVIF conversion, you need to handle AJAX deletion of converted files. The example below uses [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package. If you use a different approach, implement the deletion logic according to your structure.
+
+### Base Resource with deletion method:
 
 ```php
 <?php
@@ -157,9 +159,9 @@ class BaseResource extends ModelResource
 }
 ```
 
-Then in your FormPage, add the helper method and use it with `removable()`:
+### FormPage with helper method:
 
-````php
+```php
 use Povly\MoonshineInterventionImage\Fields\InterventionImage;
 
 class NewsFormPage extends FormPage
@@ -188,8 +190,9 @@ class NewsFormPage extends FormPage
         ];
     }
 }
+```
 
-Add the JavaScript handler to your Layout's `assets()` method:
+### JavaScript handler in Layout's `assets()` method:
 
 ```php
 use MoonShine\UI\Components\InlineJs;
@@ -211,7 +214,9 @@ protected function assets(): array
         JS),
     ];
 }
-````
+```
+
+> **Note:** This example uses `moonshine/layouts-field` package structure. If you use a different approach for multiple images, you need to adapt the deletion logic according to your implementation. The key point is to delete the original file and its WebP/AVIF conversions when an image is removed.
 
 ## Supported Formats
 
