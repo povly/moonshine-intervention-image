@@ -166,6 +166,17 @@ class BaseResource extends ModelResource
             }
         }
     }
+
+    public static function getRemovableImageAttributes($page, string $name): array
+    {
+        return [
+            'data-async-url' => $page->getResource()
+                ? $page->getRouter()->getEndpoints()->method('removeMainImagesData',
+                    params: ['resourceItem' => $page->getResource()->getItemID()])
+                : null,
+            '@click.prevent' => "removeMainImage(\$event, '{$name}')",
+        ];
+    }
 }
 ```
 
