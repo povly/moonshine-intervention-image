@@ -33,7 +33,7 @@ final class InterventionImage extends MoonShineImage
 
     protected ?int $maxHeight = null;
 
-    protected bool $logging = false;
+    protected ?bool $logging = null;
 
     protected bool $pngIndexed = false;
 
@@ -88,6 +88,10 @@ final class InterventionImage extends MoonShineImage
 
         if (isset($preset['png_indexed']) && $preset['png_indexed']) {
             $this->pngIndexed(true, $preset['png_colors'] ?? 256);
+        }
+
+        if (isset($preset['logging'])) {
+            $this->logging($preset['logging']);
         }
 
         return $this;
@@ -186,6 +190,15 @@ final class InterventionImage extends MoonShineImage
         }
 
         return config('moonshine-intervention-image.queue.enabled', false);
+    }
+
+    protected function isLoggingEnabled(): bool
+    {
+        if ($this->logging !== null) {
+            return $this->logging;
+        }
+
+        return config('moonshine-intervention-image.default.logging', false);
     }
 
     protected function resolveOnApply(): ?Closure
@@ -303,7 +316,7 @@ final class InterventionImage extends MoonShineImage
             'max_height' => $this->maxHeight,
             'png_indexed' => $this->pngIndexed,
             'png_colors' => $this->pngColors,
-            'logging' => $this->logging,
+            'logging' => $this->isLoggingEnabled(),
         ]);
 
         $connection = $this->queueConnection ?? config('moonshine-intervention-image.queue.connection');
@@ -506,14 +519,14 @@ final class InterventionImage extends MoonShineImage
 
     protected function logInfo(string $message, array $context = []): void
     {
-        if ($this->logging) {
+        if ($this->isLoggingEnabled()) {
             Log::info('[InterventionImage] '.$message, $context);
         }
     }
 
     protected function logError(string $message, array $context = []): void
     {
-        if ($this->logging) {
+        if ($this->isLoggingEnabled()) {
             Log::error('[InterventionImage] '.$message, $context);
         }
     }
