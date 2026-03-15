@@ -80,18 +80,6 @@ InterventionImage::make('Gallery', 'gallery')
 | `stripMetadata(bool $strip = true)`               | Strip EXIF/IPTC metadata from images     |
 | `maxDimensions(?int $width, ?int $height = null)` | Resize images while keeping aspect ratio |
 
-## Getting Converted Paths
-
-```php
-$field = InterventionImage::make('Image', 'image');
-
-// Get WebP path (returns null if not exists)
-$webpPath = $field->getWebpPath($model->image);
-
-// Get AVIF path (returns null if not exists)
-$avifPath = $field->getAvifPath($model->image);
-```
-
 ## Multiple Images with AJAX Deletion (Layouts)
 
 When using `multiple()` images inside Layouts (JSON fields), you need to handle AJAX deletion of converted files (WebP/AVIF). Create a base resource with the deletion method:
@@ -223,6 +211,15 @@ protected function assets(): array
 - PNG
 - GIF
 - WebP
+
+## Documentation
+
+For actual files, configuration options, and the latest information about the required packages, please refer to their official documentation:
+
+- [intervention/image](https://image.intervention.io/)
+- [MoonShine](https://moonshine-laravel.com/)
+
+Package APIs and configurations may change over time, so always check the current documentation.
 
 ## License
 
