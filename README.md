@@ -193,22 +193,28 @@ InterventionImage::make('Images', 'gallery')
     ->removable(attributes: self::getRemovableImageAttributes($page, 'gallery'));
 ```
 
-Add the JavaScript handler to your Layout. Include `InlineJs` component in your form:
+Add the JavaScript handler to your Layout's `assets()` method:
 
 ```php
 use MoonShine\UI\Components\InlineJs;
 
-// In your Layout or form:
-InlineJs::make(<<<'JS'
-    window.removeMainImage = function(event, name) {
-        let button = event.currentTarget;
-        let accordion = button.closest('.accordion');
-        let accordionIndexValue = parseInt(accordion.querySelector('[data-r-index]').dataset.rIndex);
+// In your Layout class:
+protected function assets(): array
+{
+    return [
+        ...parent::assets(),
+        InlineJs::make(<<<'JS'
+            window.removeMainImage = function(event, name) {
+                let button = event.currentTarget;
+                let accordion = button.closest('.accordion');
+                let accordionIndexValue = parseInt(accordion.querySelector('[data-r-index]').dataset.rIndex);
 
-        fetch(`${button.dataset.asyncUrl}&imageIndex=${button.closest('.dropzone-item').dataset.id}&accordionIndex=${accordionIndexValue}&name=${name}`)
-            .then(() => button.closest('.x-removeable').remove());
-    };
-JS),
+                fetch(`${button.dataset.asyncUrl}&imageIndex=${button.closest('.dropzone-item').dataset.id}&accordionIndex=${accordionIndexValue}&name=${name}`)
+                    .then(() => button.closest('.x-removeable').remove());
+            };
+        JS),
+    ];
+}
 ```
 
 ## Supported Formats
