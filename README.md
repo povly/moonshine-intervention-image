@@ -37,23 +37,36 @@ Publish the config file to customize default settings:
 // config/moonshine-intervention-image.php
 return [
     'default' => [
-        'quality' => env('MOONSHINE_IMAGE_QUALITY', 85),
-        'generate_webp' => env('MOONSHINE_IMAGE_WEBP', false),
-        'generate_avif' => env('MOONSHINE_IMAGE_AVIF', false),
-        'strip_metadata' => env('MOONSHINE_IMAGE_STRIP_METADATA', false),
-        'max_width' => env('MOONSHINE_IMAGE_MAX_WIDTH', null),
-        'max_height' => env('MOONSHINE_IMAGE_MAX_HEIGHT', null),
-        'logging' => env('MOONSHINE_IMAGE_LOGGING', false),
+        'quality' => env('MOONSHINE_INTERVENTION_IMAGE_QUALITY', 85),
+        'quality_webp' => env('MOONSHINE_INTERVENTION_IMAGE_QUALITY_WEBP', 80),
+        'quality_avif' => env('MOONSHINE_INTERVENTION_IMAGE_QUALITY_AVIF', 65),
+        'generate_webp' => env('MOONSHINE_INTERVENTION_IMAGE_WEBP', false),
+        'generate_avif' => env('MOONSHINE_INTERVENTION_IMAGE_AVIF', false),
+        'strip_metadata' => env('MOONSHINE_INTERVENTION_IMAGE_STRIP_METADATA', false),
+        'max_width' => env('MOONSHINE_INTERVENTION_IMAGE_MAX_WIDTH'),
+        'max_height' => env('MOONSHINE_INTERVENTION_IMAGE_MAX_HEIGHT'),
+        'logging' => env('MOONSHINE_INTERVENTION_IMAGE_LOGGING', false),
     ],
 
     'png' => [
-        'indexed' => env('MOONSHINE_IMAGE_PNG_INDEXED', true),
-        'colors' => env('MOONSHINE_IMAGE_PNG_COLORS', 256),
+        'indexed' => env('MOONSHINE_INTERVENTION_IMAGE_PNG_INDEXED', true),
+        'colors' => env('MOONSHINE_INTERVENTION_IMAGE_PNG_COLORS', 256),
+    ],
+
+    'queue' => [
+        'enabled' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_ENABLED', false),
+        'connection' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_CONNECTION'),
+        'queue' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_NAME', 'images'),
+        'delay' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_DELAY'),
+        'tries' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_TRIES', 3),
+        'timeout' => env('MOONSHINE_INTERVENTION_IMAGE_QUEUE_TIMEOUT', 120),
     ],
 
     'presets' => [
         'banner' => [
             'quality' => 85,
+            'quality_webp' => 80,
+            'quality_avif' => 65,
             'generate_webp' => true,
             'generate_avif' => false,
             'max_width' => 1920,
@@ -62,6 +75,8 @@ return [
         ],
         'thumbnail' => [
             'quality' => 80,
+            'quality_webp' => 75,
+            'quality_avif' => 60,
             'generate_webp' => true,
             'generate_avif' => false,
             'max_width' => 400,
@@ -70,6 +85,8 @@ return [
         ],
         'gallery' => [
             'quality' => 85,
+            'quality_webp' => 80,
+            'quality_avif' => 65,
             'generate_webp' => true,
             'generate_avif' => true,
             'max_width' => 1920,
@@ -105,10 +122,13 @@ InterventionImage::make('Image', 'image')
     ->generateWebp()
     ->generateAvif()
 
-// With quality control (1-100, default: 85)
+// With quality control (1-100)
 InterventionImage::make('Image', 'image')
     ->generateWebp()
-    ->quality(80)
+    ->generateAvif()
+    ->quality(85)           // Original image
+    ->qualityWebp(80)       // WebP version
+    ->qualityAvif(65)       // AVIF version
 
 // PNG optimization with indexed colors (reduces file size significantly)
 InterventionImage::make('Image', 'image')
@@ -133,20 +153,95 @@ InterventionImage::make('Gallery', 'gallery')
 InterventionImage::make('Image', 'image')
     ->generateWebp()
     ->logging()
+
+// Queue processing (for large images)
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->queue()
+
+// Queue with custom settings
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->queue(true, 'redis', 'images', 10) // enabled, connection, queue, delay(seconds)
+
+// Custom quality for WebP and AVIF
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->generateAvif()
+    ->quality(85)           // Original image quality
+    ->qualityWebp(80)       // WebP quality
+    ->qualityAvif(65)       // AVIF quality
+```
+
+## Queue Processing
+
+Process images in the background using Laravel queues. Useful for handling large images or multiple uploads without blocking the user request.
+
+### Enable via Config
+
+```php
+// config/moonshine-intervention-image.php
+'queue' => [
+    'enabled' => true,
+    'connection' => null,     // null = default connection
+    'queue' => 'images',
+    'delay' => null,          // seconds or Carbon instance
+    'tries' => 3,
+    'timeout' => 120,
+],
+```
+
+### Enable via Field Method
+
+```php
+// Enable queue with default config settings
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->queue()
+
+// Override queue settings per field
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->queue(true, 'redis', 'high-priority', 5)
+
+// Set only delay
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->queue()
+    ->queueDelay(now()->addMinutes(5))
+```
+
+### Queue Job
+
+The `ProcessImage` job handles:
+- Image optimization
+- WebP conversion
+- AVIF conversion
+- Automatic retries (3 attempts by default)
+- 1 hour retry window
+- Exponential backoff (10s, 30s, 60s)
+
+```bash
+# Start queue worker
+php artisan queue:work --queue=images
 ```
 
 ## Methods
 
-| Method                                            | Description                                         |
-| ------------------------------------------------- | --------------------------------------------------- |
-| `preset(string $name)`                            | Apply preset from config                            |
-| `generateWebp(bool $generate = true)`             | Generate WebP version of the image                  |
-| `generateAvif(bool $generate = true)`             | Generate AVIF version of the image                  |
-| `quality(int $quality)`                           | Set quality (1-100, default: 85)                    |
-| `pngIndexed(bool $indexed = true, int $colors)`   | Optimize PNG with indexed colors (default: 256)     |
-| `stripMetadata(bool $strip = true)`               | Strip EXIF/IPTC metadata from images                |
-| `maxDimensions(?int $width, ?int $height = null)` | Resize images while keeping aspect ratio            |
-| `logging(bool $enabled = true)`                   | Enable logging (disabled by default)                |
+| Method                                                       | Description                                         |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| `preset(string $name)`                                       | Apply preset from config                            |
+| `generateWebp(bool $generate = true)`                        | Generate WebP version of the image                  |
+| `generateAvif(bool $generate = true)`                        | Generate AVIF version of the image                  |
+| `quality(int $quality)`                                      | Set quality for original image (1-100, default: 85) |
+| `qualityWebp(int $quality)`                                  | Set quality for WebP (1-100, default: 80)           |
+| `qualityAvif(int $quality)`                                  | Set quality for AVIF (1-100, default: 65)           |
+| `pngIndexed(bool $indexed = true, int $colors)`              | Optimize PNG with indexed colors (default: 256)     |
+| `stripMetadata(bool $strip = true)`                          | Strip EXIF/IPTC metadata from images                |
+| `maxDimensions(?int $width, ?int $height = null)`            | Resize images while keeping aspect ratio            |
+| `queue(bool $enabled, ?string $connection, ?string $queue, $delay)` | Enable queue processing                      |
+| `queueDelay(DateTimeInterface\|DateInterval\|int\|null $delay)` | Set queue delay                                |
+| `logging(bool $enabled = true)`                              | Enable logging (disabled by default)                |
 
 ## PNG Optimization
 
@@ -160,6 +255,23 @@ InterventionImage::make('Image', 'image')
 ```
 
 This can significantly reduce PNG file size, especially for images with limited colors.
+
+## AVIF Support
+
+AVIF provides superior compression compared to WebP and JPEG. Use `qualityAvif()` to control the quality:
+
+```php
+InterventionImage::make('Image', 'image')
+    ->generateAvif()
+    ->qualityAvif(65)  // Lower values = smaller files, lower quality
+```
+
+Recommended AVIF quality values:
+- **50-60**: Maximum compression, acceptable quality for thumbnails
+- **60-70**: Good balance between size and quality (default: 65)
+- **70-80**: High quality, still smaller than WebP/JPEG
+
+**Note**: AVIF requires Imagick or GD with AVIF support compiled in.
 
 ---
 
@@ -302,6 +414,8 @@ class BannerFormPage extends FormPage
                     ->generateWebp()
                     ->generateAvif()
                     ->quality(85)
+                    ->qualityWebp(80)
+                    ->qualityAvif(65)
                     ->pngIndexed()
                     ->maxDimensions(1920, 1080)
                     ->removable(),
@@ -315,6 +429,8 @@ class BannerFormPage extends FormPage
                     ->generateWebp()
                     ->generateAvif()
                     ->quality(85)
+                    ->qualityWebp(80)
+                    ->qualityAvif(65)
                     ->pngIndexed()
                     ->maxDimensions(1920, 1080),
             ]),
@@ -554,6 +670,8 @@ class BannerFormPage extends FormPage
                     ->generateWebp()
                     ->generateAvif()
                     ->quality(85)
+                    ->qualityWebp(80)
+                    ->qualityAvif(65)
                     ->pngIndexed()
                     ->maxDimensions(1920, 1080)
                     ->removable(),
@@ -567,6 +685,8 @@ class BannerFormPage extends FormPage
                     ->generateWebp()
                     ->generateAvif()
                     ->quality(85)
+                    ->qualityWebp(80)
+                    ->qualityAvif(65)
                     ->pngIndexed()
                     ->maxDimensions(1920, 1080),
                     
@@ -580,6 +700,8 @@ class BannerFormPage extends FormPage
                             ->generateWebp()
                             ->generateAvif()
                             ->quality(85)
+                            ->qualityWebp(80)
+                            ->qualityAvif(65)
                             ->pngIndexed()
                             ->maxDimensions(1920, 1080)
                             ->removable(attributes: $this->getRemovableLayoutImageAttributes('image')),
@@ -593,6 +715,8 @@ class BannerFormPage extends FormPage
                             ->generateWebp()
                             ->generateAvif()
                             ->quality(85)
+                            ->qualityWebp(80)
+                            ->qualityAvif(65)
                             ->pngIndexed()
                             ->maxDimensions(1920, 1080)
                             ->removable(attributes: $this->getRemovableLayoutImageAttributes('images')),
@@ -637,6 +761,7 @@ class BannerFormPage extends FormPage
 - PNG
 - GIF
 - WebP
+- AVIF
 
 ## Documentation
 

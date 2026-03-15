@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Povly\MoonshineInterventionImage\Fields;
 
 use Closure;
+use DateInterval;
+use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Laravel\Facades\Image;
 use MoonShine\UI\Fields\Image as MoonShineImage;
+use Povly\MoonshineInterventionImage\Jobs\ProcessImage;
 
 final class InterventionImage extends MoonShineImage
 {
@@ -19,6 +22,10 @@ final class InterventionImage extends MoonShineImage
     protected bool $generateAvif = false;
 
     protected int $quality = 85;
+
+    protected int $qualityWebp = 80;
+
+    protected int $qualityAvif = 65;
 
     protected bool $stripMetadata = false;
 
@@ -34,10 +41,18 @@ final class InterventionImage extends MoonShineImage
 
     protected array $supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
 
+    protected ?bool $queueEnabled = null;
+
+    protected ?string $queueConnection = null;
+
+    protected ?string $queueName = null;
+
+    protected DateTimeInterface|DateInterval|int|null $queueDelay = null;
+
     public function preset(string $name): static
     {
         $presets = config('moonshine-intervention-image.presets', []);
-        
+
         if (! isset($presets[$name])) {
             return $this;
         }
@@ -46,6 +61,14 @@ final class InterventionImage extends MoonShineImage
 
         if (isset($preset['quality'])) {
             $this->quality($preset['quality']);
+        }
+
+        if (isset($preset['quality_webp'])) {
+            $this->qualityWebp($preset['quality_webp']);
+        }
+
+        if (isset($preset['quality_avif'])) {
+            $this->qualityAvif($preset['quality_avif']);
         }
 
         if (isset($preset['generate_webp'])) {
@@ -91,6 +114,20 @@ final class InterventionImage extends MoonShineImage
         return $this;
     }
 
+    public function qualityWebp(int $quality): static
+    {
+        $this->qualityWebp = max(1, min(100, $quality));
+
+        return $this;
+    }
+
+    public function qualityAvif(int $quality): static
+    {
+        $this->qualityAvif = max(1, min(100, $quality));
+
+        return $this;
+    }
+
     public function stripMetadata(bool $strip = true): static
     {
         $this->stripMetadata = $strip;
@@ -119,6 +156,36 @@ final class InterventionImage extends MoonShineImage
         $this->pngColors = max(2, min(256, $colors));
 
         return $this;
+    }
+
+    public function queue(
+        bool $enabled = true,
+        ?string $connection = null,
+        ?string $queue = null,
+        DateTimeInterface|DateInterval|int|null $delay = null
+    ): static {
+        $this->queueEnabled = $enabled;
+        $this->queueConnection = $connection;
+        $this->queueName = $queue;
+        $this->queueDelay = $delay;
+
+        return $this;
+    }
+
+    public function queueDelay(DateTimeInterface|DateInterval|int|null $delay): static
+    {
+        $this->queueDelay = $delay;
+
+        return $this;
+    }
+
+    protected function isQueueEnabled(): bool
+    {
+        if ($this->queueEnabled !== null) {
+            return $this->queueEnabled;
+        }
+
+        return config('moonshine-intervention-image.queue.enabled', false);
     }
 
     protected function resolveOnApply(): ?Closure
@@ -216,6 +283,56 @@ final class InterventionImage extends MoonShineImage
             return;
         }
 
+        if ($this->isQueueEnabled()) {
+            $this->dispatchToQueue($relativePath, $disk);
+        } else {
+            $this->processImageSync($relativePath, $disk);
+        }
+    }
+
+    protected function dispatchToQueue(string $relativePath, string $disk): void
+    {
+        $job = new ProcessImage($relativePath, $disk, [
+            'quality' => $this->quality,
+            'quality_webp' => $this->qualityWebp,
+            'quality_avif' => $this->qualityAvif,
+            'generate_webp' => $this->generateWebp,
+            'generate_avif' => $this->generateAvif,
+            'strip_metadata' => $this->stripMetadata,
+            'max_width' => $this->maxWidth,
+            'max_height' => $this->maxHeight,
+            'png_indexed' => $this->pngIndexed,
+            'png_colors' => $this->pngColors,
+            'logging' => $this->logging,
+        ]);
+
+        $connection = $this->queueConnection ?? config('moonshine-intervention-image.queue.connection');
+        $queue = $this->queueName ?? config('moonshine-intervention-image.queue.queue', 'default');
+        $delay = $this->queueDelay ?? config('moonshine-intervention-image.queue.delay');
+
+        if ($connection) {
+            $job->onConnection($connection);
+        }
+
+        $job->onQueue($queue);
+
+        if ($delay !== null) {
+            $job->delay($delay);
+        }
+
+        dispatch($job);
+
+        $this->logInfo('Job dispatched', [
+            'path' => $relativePath,
+            'queue' => $queue,
+            'connection' => $connection,
+            'delay' => $delay,
+        ]);
+    }
+
+    protected function processImageSync(string $relativePath, string $disk): void
+    {
+        $storage = Storage::disk($disk);
         $fullPath = $storage->path($relativePath);
 
         $this->optimizeImage($fullPath);
@@ -290,7 +407,7 @@ final class InterventionImage extends MoonShineImage
 
         try {
             $image = Image::read($fullPath);
-            $encoded = $image->toWebp(quality: $this->quality);
+            $encoded = $image->toWebp(quality: $this->qualityWebp);
             $encoded->save($webpPath);
 
             if (file_exists($webpPath)) {
@@ -313,7 +430,7 @@ final class InterventionImage extends MoonShineImage
 
         try {
             $image = Image::read($fullPath);
-            $encoded = $image->toAvif(quality: $this->quality);
+            $encoded = $image->toAvif(quality: $this->qualityAvif);
             $encoded->save($avifPath);
 
             if (file_exists($avifPath)) {
