@@ -154,7 +154,16 @@ class BaseResource extends ModelResource
             }
         }
     }
+}
+```
 
+Then in your FormPage, add the helper method and use it with `removable()`:
+
+````php
+use Povly\MoonshineInterventionImage\Fields\InterventionImage;
+
+class NewsFormPage extends FormPage
+{
     public static function getRemovableImageAttributes($page, string $name): array
     {
         return [
@@ -165,21 +174,20 @@ class BaseResource extends ModelResource
             '@click.prevent' => "removeMainImage(\$event, '{$name}')",
         ];
     }
+
+    protected function fields(): iterable
+    {
+        return [
+            // ...
+            InterventionImage::make('Images', 'gallery')
+                ->dir('news/gallery')
+                ->generateWebp()
+                ->generateAvif()
+                ->multiple()
+                ->removable(attributes: self::getRemovableImageAttributes($this, 'gallery')),
+        ];
+    }
 }
-```
-
-Then use it in your form with `removable()`:
-
-```php
-use Povly\MoonshineInterventionImage\Fields\InterventionImage;
-
-InterventionImage::make('Images', 'gallery')
-    ->dir('news/gallery')
-    ->generateWebp()
-    ->generateAvif()
-    ->multiple()
-    ->removable(attributes: self::getRemovableImageAttributes($page, 'gallery'));
-```
 
 Add the JavaScript handler to your Layout's `assets()` method:
 
@@ -203,7 +211,7 @@ protected function assets(): array
         JS),
     ];
 }
-```
+````
 
 ## Supported Formats
 
