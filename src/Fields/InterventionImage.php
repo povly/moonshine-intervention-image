@@ -28,7 +28,47 @@ final class InterventionImage extends MoonShineImage
 
     protected bool $logging = false;
 
+    protected bool $pngIndexed = false;
+
+    protected int $pngColors = 256;
+
     protected array $supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
+
+    public function preset(string $name): static
+    {
+        $presets = config('moonshine-intervention-image.presets', []);
+        
+        if (! isset($presets[$name])) {
+            return $this;
+        }
+
+        $preset = $presets[$name];
+
+        if (isset($preset['quality'])) {
+            $this->quality($preset['quality']);
+        }
+
+        if (isset($preset['generate_webp'])) {
+            $this->generateWebp($preset['generate_webp']);
+        }
+
+        if (isset($preset['generate_avif'])) {
+            $this->generateAvif($preset['generate_avif']);
+        }
+
+        if (isset($preset['max_width']) || isset($preset['max_height'])) {
+            $this->maxDimensions(
+                $preset['max_width'] ?? null,
+                $preset['max_height'] ?? null
+            );
+        }
+
+        if (isset($preset['png_indexed']) && $preset['png_indexed']) {
+            $this->pngIndexed(true, $preset['png_colors'] ?? 256);
+        }
+
+        return $this;
+    }
 
     public function generateWebp(bool $generate = true): static
     {
@@ -69,6 +109,14 @@ final class InterventionImage extends MoonShineImage
     public function logging(bool $enabled = true): static
     {
         $this->logging = $enabled;
+
+        return $this;
+    }
+
+    public function pngIndexed(bool $indexed = true, int $colors = 256): static
+    {
+        $this->pngIndexed = $indexed;
+        $this->pngColors = max(2, min(256, $colors));
 
         return $this;
     }
@@ -196,6 +244,10 @@ final class InterventionImage extends MoonShineImage
             }
 
             $extension = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+
+            if ($extension === 'png' && $this->pngIndexed) {
+                $image->reduceColors($this->pngColors);
+            }
 
             $encoded = match ($extension) {
                 'jpg', 'jpeg' => $image->toJpeg(

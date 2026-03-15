@@ -14,6 +14,15 @@ final class MoonshineInterventionImageServiceProvider extends ServiceProvider
 {
     public function boot(AppliesRegisterContract $appliesRegister): void
     {
+        $this->publishes([
+            __DIR__.'/../../config/moonshine-intervention-image.php' => config_path('moonshine-intervention-image.php'),
+        ], 'moonshine-intervention-image-config');
+
+        $this->mergeConfigFrom(
+            __DIR__.'/../../config/moonshine-intervention-image.php',
+            'moonshine-intervention-image'
+        );
+
         $appliesRegister
             ->for(ModelResource::class)
             ->fields()
