@@ -68,6 +68,11 @@ InterventionImage::make('Gallery', 'gallery')
     ->multiple()
     ->generateWebp()
     ->generateAvif()
+
+// Enable logging (disabled by default)
+InterventionImage::make('Image', 'image')
+    ->generateWebp()
+    ->logging()
 ```
 
 ## Methods
@@ -79,6 +84,7 @@ InterventionImage::make('Gallery', 'gallery')
 | `quality(int $quality)`                           | Set quality (1-100, default: 85)         |
 | `stripMetadata(bool $strip = true)`               | Strip EXIF/IPTC metadata from images     |
 | `maxDimensions(?int $width, ?int $height = null)` | Resize images while keeping aspect ratio |
+| `logging(bool $enabled = true)`                   | Enable logging (disabled by default)     |
 
 ## Multiple Images with AJAX Deletion
 

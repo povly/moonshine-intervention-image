@@ -26,6 +26,8 @@ final class InterventionImage extends MoonShineImage
 
     protected ?int $maxHeight = null;
 
+    protected bool $logging = false;
+
     protected array $supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
 
     public function generateWebp(bool $generate = true): static
@@ -60,6 +62,13 @@ final class InterventionImage extends MoonShineImage
     {
         $this->maxWidth = $width;
         $this->maxHeight = $height;
+
+        return $this;
+    }
+
+    public function logging(bool $enabled = true): static
+    {
+        $this->logging = $enabled;
 
         return $this;
     }
@@ -148,7 +157,7 @@ final class InterventionImage extends MoonShineImage
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($relativePath)) {
-            Log::error('[InterventionImage] File not exists in storage', ['path' => $relativePath]);
+            $this->logError('File not exists in storage', ['path' => $relativePath]);
 
             return;
         }
@@ -207,7 +216,7 @@ final class InterventionImage extends MoonShineImage
                 $saved = $sizeBefore - $sizeAfter;
                 $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 2) : 0;
 
-                Log::info('[InterventionImage] Optimized', [
+                $this->logInfo('Optimized', [
                     'path' => $fullPath,
                     'format' => $extension,
                     'before_bytes' => $sizeBefore,
@@ -216,7 +225,7 @@ final class InterventionImage extends MoonShineImage
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('[InterventionImage] Optimization error', [
+            $this->logError('Optimization error', [
                 'path' => $fullPath,
                 'error' => $e->getMessage(),
             ]);
@@ -233,13 +242,13 @@ final class InterventionImage extends MoonShineImage
             $encoded->save($webpPath);
 
             if (file_exists($webpPath)) {
-                Log::info('[InterventionImage] WebP created', [
+                $this->logInfo('WebP created', [
                     'path' => $webpPath,
                     'size_bytes' => filesize($webpPath),
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('[InterventionImage] WebP error', [
+            $this->logError('WebP error', [
                 'path' => $fullPath,
                 'error' => $e->getMessage(),
             ]);
@@ -256,13 +265,13 @@ final class InterventionImage extends MoonShineImage
             $encoded->save($avifPath);
 
             if (file_exists($avifPath)) {
-                Log::info('[InterventionImage] AVIF created', [
+                $this->logInfo('AVIF created', [
                     'path' => $avifPath,
                     'size_bytes' => filesize($avifPath),
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('[InterventionImage] AVIF error', [
+            $this->logError('AVIF error', [
                 'path' => $fullPath,
                 'error' => $e->getMessage(),
             ]);
@@ -324,5 +333,19 @@ final class InterventionImage extends MoonShineImage
         }
 
         return null;
+    }
+
+    protected function logInfo(string $message, array $context = []): void
+    {
+        if ($this->logging) {
+            Log::info('[InterventionImage] '.$message, $context);
+        }
+    }
+
+    protected function logError(string $message, array $context = []): void
+    {
+        if ($this->logging) {
+            Log::error('[InterventionImage] '.$message, $context);
+        }
     }
 }
