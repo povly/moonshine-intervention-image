@@ -80,7 +80,7 @@ return [
 ];
 ```
 
-## Usage
+## Basic Usage
 
 ```php
 use Povly\MoonshineInterventionImage\Fields\InterventionImage;
@@ -161,60 +161,324 @@ InterventionImage::make('Image', 'image')
 
 This can significantly reduce PNG file size, especially for images with limited colors.
 
-## Multiple Images with AJAX Deletion
+---
 
-When using `multiple()` images with WebP/AVIF conversion, you need to handle AJAX deletion of converted files. The example below uses [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package. If you use a different approach, implement the deletion logic according to your structure.
+## Complete Examples
 
-### Base Resource with deletion method:
+### 1. Simple Usage (without layouts-field)
+
+For single and multiple images without the [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package.
+
+#### Model
 
 ```php
 <?php
 
-namespace App\MoonShine\Resources;
+namespace App\Models;
 
+use Illuminate\Database\Eloquent\Model;
+
+class Banner extends Model
+{
+    protected $fillable = [
+        'title',
+        'image',
+        'images',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'images' => 'array',
+        ];
+    }
+}
+```
+
+#### Resource
+
+```php
+<?php
+
+namespace App\MoonShine\Resources\Banner;
+
+use App\Models\Banner;
+use App\MoonShine\Resources\Banner\Pages\BannerIndexPage;
+use App\MoonShine\Resources\Banner\Pages\BannerFormPage;
+use App\MoonShine\Resources\Banner\Pages\BannerDetailPage;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use MoonShine\Contracts\Core\DependencyInjection\CrudRequestContract;
 use MoonShine\Laravel\Resources\ModelResource;
-use MoonShine\Layouts\Casts\LayoutItem;
 use MoonShine\Support\Attributes\AsyncMethod;
+use MoonShine\Support\Attributes\Icon;
 
-class BaseResource extends ModelResource
+#[Icon('photo')]
+class BannerResource extends ModelResource
 {
+    protected string $model = Banner::class;
+
+    protected string $title = 'Banners';
+
+    protected function pages(): array
+    {
+        return [
+            BannerIndexPage::class,
+            BannerFormPage::class,
+            BannerDetailPage::class,
+        ];
+    }
+
     #[AsyncMethod]
-    public function removeMainImagesData(CrudRequestContract $request)
+    public function removeImageData(CrudRequestContract $request): void
     {
         $item = $request->getResource()?->getItem();
         $imageIndex = $request->integer('imageIndex');
-        $accordionIndex = $request->integer('accordionIndex');
         $name = $request->string('name');
 
         if (is_null($item) || $imageIndex < 0) {
             return;
         }
 
-        $values = $item->content[$accordionIndex]->getValues();
+        $images = $item->{$name} ?? [];
 
-        $filePath = data_get($values, "{$name}.{$imageIndex}");
+        if (isset($images[$imageIndex])) {
+            $this->deleteImageWithConversions($images[$imageIndex]);
+            Arr::forget($images, $imageIndex);
+            $item->{$name} = array_values($images);
+            $item->save();
+        }
+    }
 
-        if ($filePath) {
-            $this->deleteImageWithConversions($filePath);
+    protected function deleteImageWithConversions(string $filePath, string $disk = 'public'): void
+    {
+        if (! Storage::disk($disk)->exists($filePath)) {
+            return;
         }
 
-        Arr::forget($values, "{$name}.{$imageIndex}");
+        Storage::disk($disk)->delete($filePath);
+
+        $info = pathinfo($filePath);
+        $basePath = $info['dirname'].'/'.$info['filename'];
+
+        foreach (['webp', 'avif'] as $format) {
+            $conversionPath = $basePath.'.'.$format;
+
+            if (Storage::disk($disk)->exists($conversionPath)) {
+                Storage::disk($disk)->delete($conversionPath);
+            }
+        }
+    }
+}
+```
+
+#### FormPage
+
+```php
+<?php
+
+namespace App\MoonShine\Resources\Banner\Pages;
+
+use MoonShine\Laravel\Pages\Crud\FormPage;
+use MoonShine\UI\Fields\ID;
+use MoonShine\UI\Fields\Text;
+use MoonShine\UI\Components\Layout\Box;
+use Povly\MoonshineInterventionImage\Fields\InterventionImage;
+
+class BannerFormPage extends FormPage
+{
+    protected function fields(): iterable
+    {
+        return [
+            Box::make([
+                ID::make(),
+                Text::make('Title', 'title')
+                    ->required(),
+                    
+                // Single image
+                InterventionImage::make('Image', 'image')
+                    ->dir('banners')
+                    ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                    ->generateWebp()
+                    ->generateAvif()
+                    ->quality(85)
+                    ->pngIndexed()
+                    ->maxDimensions(1920, 1080)
+                    ->removable(),
+                    
+                // Multiple images with AJAX deletion
+                InterventionImage::make('Gallery', 'images')
+                    ->dir('banners/gallery')
+                    ->multiple()
+                    ->removable(attributes: $this->getRemovableImageAttributes('images'))
+                    ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                    ->generateWebp()
+                    ->generateAvif()
+                    ->quality(85)
+                    ->pngIndexed()
+                    ->maxDimensions(1920, 1080),
+            ]),
+        ];
+    }
+
+    public function getRemovableImageAttributes(string $name): array
+    {
+        return [
+            'data-async-url' => $this->getResource()
+                ? $this->getRouter()->getEndpoints()->method(
+                    'removeImageData',
+                    params: ['resourceItem' => $this->getResource()->getItemID()]
+                )
+                : null,
+            '@click.prevent' => "removeImage(\$event, '{$name}')",
+        ];
+    }
+}
+```
+
+---
+
+### 2. Usage with layouts-field
+
+When using [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package for flexible content blocks.
+
+#### Model
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use MoonShine\Layouts\Casts\LayoutsCast;
+
+class Banner extends Model
+{
+    protected $fillable = [
+        'title',
+        'image',
+        'images',
+        'content',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'images' => 'array',
+            'content' => LayoutsCast::class,
+        ];
+    }
+}
+```
+
+#### Migration
+
+```php
+Schema::table('banners', function (Blueprint $table) {
+    $table->json('content')->nullable();
+});
+```
+
+#### Resource
+
+```php
+<?php
+
+namespace App\MoonShine\Resources\Banner;
+
+use App\Models\Banner;
+use App\MoonShine\Resources\Banner\Pages\BannerIndexPage;
+use App\MoonShine\Resources\Banner\Pages\BannerFormPage;
+use App\MoonShine\Resources\Banner\Pages\BannerDetailPage;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
+use MoonShine\Contracts\Core\DependencyInjection\CrudRequestContract;
+use MoonShine\Layouts\Casts\LayoutItem;
+use MoonShine\Laravel\Resources\ModelResource;
+use MoonShine\Support\Attributes\AsyncMethod;
+use MoonShine\Support\Attributes\Icon;
+
+#[Icon('photo')]
+class BannerResource extends ModelResource
+{
+    protected string $model = Banner::class;
+
+    protected string $title = 'Banners';
+
+    protected function pages(): array
+    {
+        return [
+            BannerIndexPage::class,
+            BannerFormPage::class,
+            BannerDetailPage::class,
+        ];
+    }
+
+    #[AsyncMethod]
+    public function removeImageData(CrudRequestContract $request): void
+    {
+        $item = $request->getResource()?->getItem();
+        $imageIndex = $request->integer('imageIndex');
+        $name = $request->string('name');
+
+        if (is_null($item) || $imageIndex < 0) {
+            return;
+        }
+
+        $images = $item->{$name} ?? [];
+
+        if (isset($images[$imageIndex])) {
+            $this->deleteImageWithConversions($images[$imageIndex]);
+            Arr::forget($images, $imageIndex);
+            $item->{$name} = array_values($images);
+            $item->save();
+        }
+    }
+
+    #[AsyncMethod]
+    public function removeLayoutImageData(CrudRequestContract $request): void
+    {
+        $item = $request->getResource()?->getItem();
+        $imageIndex = $request->integer('imageIndex');
+        $layoutIndex = $request->integer('layoutIndex');
+        $name = $request->string('name');
+
+        if (is_null($item) || $imageIndex < 0 || $layoutIndex < 0) {
+            return;
+        }
+
+        $content = $item->content;
+
+        if (! isset($content[$layoutIndex])) {
+            return;
+        }
+
+        $values = $content[$layoutIndex] instanceof LayoutItem
+            ? $content[$layoutIndex]->getValues()
+            : $content[$layoutIndex]['values'];
 
         $images = data_get($values, $name);
 
-        if (is_array($images)) {
+        if (is_array($images) && isset($images[$imageIndex])) {
+            $this->deleteImageWithConversions($images[$imageIndex]);
+            Arr::forget($images, $imageIndex);
             data_set($values, $name, array_values($images));
+        } elseif (is_string($images)) {
+            $this->deleteImageWithConversions($images);
+            data_set($values, $name, null);
         }
 
-        $item->content[$accordionIndex] = new LayoutItem(
-            $item->content[$accordionIndex]->getName(),
-            $item->content[$accordionIndex]->getKey(),
-            $values
-        );
+        if ($content[$layoutIndex] instanceof LayoutItem) {
+            $content[$layoutIndex] = new LayoutItem(
+                $content[$layoutIndex]->getName(),
+                $content[$layoutIndex]->getKey(),
+                $values
+            );
+        } else {
+            $content[$layoutIndex]['values'] = $values;
+        }
 
+        $item->content = $content;
         $item->save();
     }
 
@@ -240,110 +504,132 @@ class BaseResource extends ModelResource
 }
 ```
 
-### Simple Multiple Images (without layouts-field):
+#### FormPage
 
 ```php
-// In your Resource:
-#[AsyncMethod]
-public function removeImageData(CrudRequestContract $request): void
-{
-    $item = $request->getResource()?->getItem();
-    $imageIndex = $request->integer('imageIndex');
-    $name = $request->string('name');
+<?php
 
-    if (is_null($item) || $imageIndex < 0) {
-        return;
-    }
+namespace App\MoonShine\Resources\Banner\Pages;
 
-    $images = $item->{$name} ?? [];
-
-    if (isset($images[$imageIndex])) {
-        $this->deleteImageWithConversions($images[$imageIndex]);
-        Arr::forget($images, $imageIndex);
-        $item->{$name} = array_values($images);
-        $item->save();
-    }
-}
-
-protected function deleteImageWithConversions(string $filePath, string $disk = 'public'): void
-{
-    if (! Storage::disk($disk)->exists($filePath)) {
-        return;
-    }
-
-    Storage::disk($disk)->delete($filePath);
-
-    $info = pathinfo($filePath);
-    $basePath = $info['dirname'].'/'.$info['filename'];
-
-    foreach (['webp', 'avif'] as $format) {
-        $conversionPath = $basePath.'.'.$format;
-
-        if (Storage::disk($disk)->exists($conversionPath)) {
-            Storage::disk($disk)->delete($conversionPath);
-        }
-    }
-}
-```
-
-### FormPage with helper method:
-
-```php
+use MoonShine\Laravel\Pages\Crud\FormPage;
+use MoonShine\UI\Fields\ID;
+use MoonShine\UI\Fields\Text;
+use MoonShine\UI\Components\Layout\Box;
+use MoonShine\AssetManager\InlineJs;
+use MoonShine\Layouts\Fields\Layouts;
 use Povly\MoonshineInterventionImage\Fields\InterventionImage;
 
-class NewsFormPage extends FormPage
+class BannerFormPage extends FormPage
 {
-    public static function getRemovableImageAttributes($page, string $name): array
+    protected function assets(): array
     {
         return [
-            'data-async-url' => $page->getResource()
-                ? $page->getRouter()->getEndpoints()->method('removeMainImagesData',
-                    params: ['resourceItem' => $page->getResource()->getItemID()])
-                : null,
-            '@click.prevent' => "removeMainImage(\$event, '{$name}')",
+            ...parent::assets(),
+            InlineJs::make(<<<'JS'
+                window.removeLayoutImage = function(event, name) {
+                    let button = event.currentTarget;
+                    let accordion = button.closest('.accordion');
+                    let layoutIndex = parseInt(accordion.querySelector('[data-r-index]')?.dataset.rIndex ?? 0);
+                    let imageIndex = button.closest('.dropzone-item')?.dataset.id ?? 0;
+                    
+                    fetch(`${button.dataset.asyncUrl}&imageIndex=${imageIndex}&layoutIndex=${layoutIndex}&name=${name}`)
+                        .then(() => button.closest('.x-removeable')?.remove());
+                };
+            JS),
         ];
     }
 
     protected function fields(): iterable
     {
         return [
-            // ...
-            InterventionImage::make('Images', 'gallery')
-                ->dir('news/gallery')
-                ->generateWebp()
-                ->generateAvif()
-                ->multiple()
-                ->removable(attributes: self::getRemovableImageAttributes($this, 'gallery')),
+            Box::make([
+                ID::make(),
+                Text::make('Title', 'title')
+                    ->required(),
+                    
+                // Single image (outside layouts)
+                InterventionImage::make('Image', 'image')
+                    ->dir('banners')
+                    ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                    ->generateWebp()
+                    ->generateAvif()
+                    ->quality(85)
+                    ->pngIndexed()
+                    ->maxDimensions(1920, 1080)
+                    ->removable(),
+                    
+                // Multiple images (outside layouts)
+                InterventionImage::make('Gallery', 'images')
+                    ->dir('banners/gallery')
+                    ->multiple()
+                    ->removable(attributes: $this->getRemovableImageAttributes('images'))
+                    ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                    ->generateWebp()
+                    ->generateAvif()
+                    ->quality(85)
+                    ->pngIndexed()
+                    ->maxDimensions(1920, 1080),
+                    
+                // Layouts field with images inside
+                Layouts::make('Content', 'content')
+                    ->addLayout('Image Block', 'image_block', [
+                        Text::make('Title', 'title'),
+                        InterventionImage::make('Image', 'image')
+                            ->dir('banners/blocks')
+                            ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                            ->generateWebp()
+                            ->generateAvif()
+                            ->quality(85)
+                            ->pngIndexed()
+                            ->maxDimensions(1920, 1080)
+                            ->removable(attributes: $this->getRemovableLayoutImageAttributes('image')),
+                    ])
+                    ->addLayout('Gallery Block', 'gallery', [
+                        Text::make('Title', 'title'),
+                        InterventionImage::make('Images', 'images')
+                            ->dir('banners/gallery-blocks')
+                            ->multiple()
+                            ->allowedExtensions(['jpg', 'jpeg', 'png', 'webp'])
+                            ->generateWebp()
+                            ->generateAvif()
+                            ->quality(85)
+                            ->pngIndexed()
+                            ->maxDimensions(1920, 1080)
+                            ->removable(attributes: $this->getRemovableLayoutImageAttributes('images')),
+                    ]),
+            ]),
+        ];
+    }
+
+    public function getRemovableImageAttributes(string $name): array
+    {
+        return [
+            'data-async-url' => $this->getResource()
+                ? $this->getRouter()->getEndpoints()->method(
+                    'removeImageData',
+                    params: ['resourceItem' => $this->getResource()->getItemID()]
+                )
+                : null,
+            '@click.prevent' => "removeImage(\$event, '{$name}')",
+        ];
+    }
+
+    public function getRemovableLayoutImageAttributes(string $name): array
+    {
+        return [
+            'data-async-url' => $this->getResource()
+                ? $this->getRouter()->getEndpoints()->method(
+                    'removeLayoutImageData',
+                    params: ['resourceItem' => $this->getResource()->getItemID()]
+                )
+                : null,
+            '@click.prevent' => "removeLayoutImage(\$event, '{$name}')",
         ];
     }
 }
 ```
 
-### JavaScript handler in Layout's `assets()` method:
-
-```php
-use MoonShine\UI\Components\InlineJs;
-
-// In your Layout class:
-protected function assets(): array
-{
-    return [
-        ...parent::assets(),
-        InlineJs::make(<<<'JS'
-            window.removeMainImage = function(event, name) {
-                let button = event.currentTarget;
-                let accordion = button.closest('.accordion');
-                let accordionIndexValue = parseInt(accordion.querySelector('[data-r-index]').dataset.rIndex);
-
-                fetch(`${button.dataset.asyncUrl}&imageIndex=${button.closest('.dropzone-item').dataset.id}&accordionIndex=${accordionIndexValue}&name=${name}`)
-                    .then(() => button.closest('.x-removeable').remove());
-            };
-        JS),
-    ];
-}
-```
-
-> **Note:** This example uses `moonshine/layouts-field` package structure. If you use a different approach for multiple images, you need to adapt the deletion logic according to your implementation. The key point is to delete the original file and its WebP/AVIF conversions when an image is removed.
+---
 
 ## Supported Formats
 
@@ -358,6 +644,7 @@ For actual files, configuration options, and the latest information about the re
 
 - [intervention/image](https://image.intervention.io/)
 - [MoonShine](https://moonshine-laravel.com/)
+- [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field)
 
 Package APIs and configurations may change over time, so always check the current documentation.
 
