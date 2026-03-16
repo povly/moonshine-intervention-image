@@ -281,6 +281,42 @@ Recommended AVIF quality values:
 
 For single and multiple images without the [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package.
 
+#### Layout
+
+Add the `removeImage` JavaScript function to your MoonShine layout:
+
+```php
+<?php
+
+namespace App\MoonShine\Layouts;
+
+use MoonShine\AssetManager\InlineJs;
+use MoonShine\Laravel\Layouts\AppLayout;
+
+final class MoonShineLayout extends AppLayout
+{
+    protected function assets(): array
+    {
+        return [
+            ...parent::assets(),
+            InlineJs::make(<<<'JS'
+                window.removeImage = function(event, name) {
+                    let button = event.currentTarget;
+                    let imageIndex = button.closest('.dropzone-item')?.dataset.id;
+
+                    if (imageIndex === undefined) {
+                        return;
+                    }
+
+                    fetch(`${button.dataset.asyncUrl}&imageIndex=${imageIndex}&name=${name}`)
+                        .then(() => button.closest('.x-removeable')?.remove());
+                };
+            JS),
+        ];
+    }
+}
+```
+
 #### Model
 
 ```php
@@ -323,9 +359,8 @@ use Illuminate\Support\Facades\Storage;
 use MoonShine\Contracts\Core\DependencyInjection\CrudRequestContract;
 use MoonShine\Laravel\Resources\ModelResource;
 use MoonShine\Support\Attributes\AsyncMethod;
-use MoonShine\Support\Attributes\Icon;
 
-#[Icon('photo')]
+
 class BannerResource extends ModelResource
 {
     protected string $model = Banner::class;
@@ -458,6 +493,52 @@ class BannerFormPage extends FormPage
 
 When using [moonshine/layouts-field](https://github.com/moonshine-software/layouts-field) package for flexible content blocks.
 
+#### Layout
+
+Add the `removeImage` and `removeLayoutImage` JavaScript functions to your MoonShine layout:
+
+```php
+<?php
+
+namespace App\MoonShine\Layouts;
+
+use MoonShine\AssetManager\InlineJs;
+use MoonShine\Laravel\Layouts\AppLayout;
+
+final class MoonShineLayout extends AppLayout
+{
+    protected function assets(): array
+    {
+        return [
+            ...parent::assets(),
+            InlineJs::make(<<<'JS'
+                window.removeImage = function(event, name) {
+                    let button = event.currentTarget;
+                    let imageIndex = button.closest('.dropzone-item')?.dataset.id;
+
+                    if (imageIndex === undefined) {
+                        return;
+                    }
+
+                    fetch(`${button.dataset.asyncUrl}&imageIndex=${imageIndex}&name=${name}`)
+                        .then(() => button.closest('.x-removeable')?.remove());
+                };
+
+                window.removeLayoutImage = function(event, name) {
+                    let button = event.currentTarget;
+                    let accordion = button.closest('.accordion');
+                    let layoutIndex = parseInt(accordion.querySelector('[data-r-index]')?.dataset.rIndex ?? 0);
+                    let imageIndex = button.closest('.dropzone-item')?.dataset.id ?? 0;
+                    
+                    fetch(`${button.dataset.asyncUrl}&imageIndex=${imageIndex}&layoutIndex=${layoutIndex}&name=${name}`)
+                        .then(() => button.closest('.x-removeable')?.remove());
+                };
+            JS),
+        ];
+    }
+}
+```
+
 #### Model
 
 ```php
@@ -512,9 +593,7 @@ use MoonShine\Contracts\Core\DependencyInjection\CrudRequestContract;
 use MoonShine\Layouts\Casts\LayoutItem;
 use MoonShine\Laravel\Resources\ModelResource;
 use MoonShine\Support\Attributes\AsyncMethod;
-use MoonShine\Support\Attributes\Icon;
 
-#[Icon('photo')]
 class BannerResource extends ModelResource
 {
     protected string $model = Banner::class;
@@ -631,30 +710,11 @@ use MoonShine\Laravel\Pages\Crud\FormPage;
 use MoonShine\UI\Fields\ID;
 use MoonShine\UI\Fields\Text;
 use MoonShine\UI\Components\Layout\Box;
-use MoonShine\AssetManager\InlineJs;
 use MoonShine\Layouts\Fields\Layouts;
 use Povly\MoonshineInterventionImage\Fields\InterventionImage;
 
 class BannerFormPage extends FormPage
 {
-    protected function assets(): array
-    {
-        return [
-            ...parent::assets(),
-            InlineJs::make(<<<'JS'
-                window.removeLayoutImage = function(event, name) {
-                    let button = event.currentTarget;
-                    let accordion = button.closest('.accordion');
-                    let layoutIndex = parseInt(accordion.querySelector('[data-r-index]')?.dataset.rIndex ?? 0);
-                    let imageIndex = button.closest('.dropzone-item')?.dataset.id ?? 0;
-                    
-                    fetch(`${button.dataset.asyncUrl}&imageIndex=${imageIndex}&layoutIndex=${layoutIndex}&name=${name}`)
-                        .then(() => button.closest('.x-removeable')?.remove());
-                };
-            JS),
-        ];
-    }
-
     protected function fields(): iterable
     {
         return [
