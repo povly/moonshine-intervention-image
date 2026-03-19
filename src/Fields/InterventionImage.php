@@ -4,18 +4,17 @@ declare(strict_types=1);
 
 namespace Povly\MoonshineInterventionImage\Fields;
 
-use Closure;
 use DateInterval;
 use DateTimeInterface;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Interfaces\ImageInterface;
-use Intervention\Image\Laravel\Facades\Image;
 use MoonShine\UI\Fields\Image as MoonShineImage;
 use Povly\MoonshineInterventionImage\Enums\WatermarkPosition;
 use Povly\MoonshineInterventionImage\Jobs\ProcessImage;
+use Povly\MoonshineInterventionImage\Services\ImageProcessor;
+use Povly\MoonshineInterventionImage\Support\PathHelper;
+use Povly\MoonshineInterventionImage\ValueObjects\ImageProcessingConfig;
+use Povly\MoonshineInterventionImage\ValueObjects\TextWatermarkConfig;
+use Povly\MoonshineInterventionImage\ValueObjects\WatermarkConfig;
 
 final class InterventionImage extends MoonShineImage
 {
@@ -40,8 +39,6 @@ final class InterventionImage extends MoonShineImage
     protected bool $pngIndexed = false;
 
     protected int $pngColors = 256;
-
-    protected array $supportedFormats = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
 
     protected ?bool $queueEnabled = null;
 
@@ -245,11 +242,9 @@ final class InterventionImage extends MoonShineImage
         }
 
         if ($position !== null) {
-            if (is_string($position)) {
-                $this->watermarkPosition = WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight;
-            } else {
-                $this->watermarkPosition = $position;
-            }
+            $this->watermarkPosition = is_string($position)
+                ? WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight
+                : $position;
         }
 
         $this->watermarkOffsetX = $offsetX;
@@ -278,11 +273,9 @@ final class InterventionImage extends MoonShineImage
         }
 
         if ($position !== null) {
-            if (is_string($position)) {
-                $this->watermarkTextPosition = WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight;
-            } else {
-                $this->watermarkTextPosition = $position;
-            }
+            $this->watermarkTextPosition = is_string($position)
+                ? WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight
+                : $position;
         }
 
         $this->watermarkTextOffsetX = $offsetX;
@@ -324,204 +317,6 @@ final class InterventionImage extends MoonShineImage
         return $this;
     }
 
-    protected function hasWatermark(): bool
-    {
-        if ($this->watermarkDisabled) {
-            return false;
-        }
-
-        $globalImageEnabled = config('moonshine-intervention-image.watermark.enabled', false);
-        $globalTextEnabled = config('moonshine-intervention-image.watermark_text.enabled', false);
-
-        return $this->watermarkImage !== null
-            || $this->watermarkText !== null
-            || $globalImageEnabled
-            || $globalTextEnabled;
-    }
-
-    protected function getWatermarkOptions(): ?array
-    {
-        if ($this->watermarkDisabled) {
-            return null;
-        }
-
-        if ($this->watermarkImage !== null) {
-            return [
-                'image' => $this->watermarkImage,
-                'position' => $this->watermarkPosition?->value ?? 'bottom-right',
-                'offset_x' => $this->watermarkOffsetX ?? 10,
-                'offset_y' => $this->watermarkOffsetY ?? 10,
-                'opacity' => $this->watermarkOpacity ?? 100,
-                'width' => $this->watermarkWidth,
-                'height' => $this->watermarkHeight,
-                'custom_x' => $this->customPositionX,
-                'custom_y' => $this->customPositionY,
-            ];
-        }
-
-        $globalConfig = config('moonshine-intervention-image.watermark', []);
-
-        if (($globalConfig['enabled'] ?? false) && ($globalConfig['image'] ?? null)) {
-            $position = $this->watermarkPosition?->value ?? ($globalConfig['position'] ?? 'bottom-right');
-            $customX = $this->customPositionX ?? $globalConfig['custom_position']['x'] ?? null;
-            $customY = $this->customPositionY ?? $globalConfig['custom_position']['y'] ?? null;
-
-            return [
-                'image' => $globalConfig['image'],
-                'position' => $position,
-                'offset_x' => $this->watermarkOffsetX ?? ($globalConfig['offset_x'] ?? 10),
-                'offset_y' => $this->watermarkOffsetY ?? ($globalConfig['offset_y'] ?? 10),
-                'opacity' => $this->watermarkOpacity ?? ($globalConfig['opacity'] ?? 100),
-                'width' => $this->watermarkWidth ?? ($globalConfig['width'] ?? null),
-                'height' => $this->watermarkHeight ?? ($globalConfig['height'] ?? null),
-                'custom_x' => $customX,
-                'custom_y' => $customY,
-            ];
-        }
-
-        return null;
-    }
-
-    protected function getWatermarkTextOptions(): ?array
-    {
-        if ($this->watermarkDisabled) {
-            return null;
-        }
-
-        if ($this->watermarkText !== null) {
-            return [
-                'text' => $this->watermarkText,
-                'font' => $this->watermarkTextFont,
-                'size' => $this->watermarkTextSize ?? 24,
-                'color' => $this->watermarkTextColor ?? 'ffffff',
-                'position' => $this->watermarkTextPosition?->value ?? 'bottom-right',
-                'offset_x' => $this->watermarkTextOffsetX ?? 10,
-                'offset_y' => $this->watermarkTextOffsetY ?? 10,
-                'stroke_color' => $this->watermarkTextStrokeColor,
-                'stroke_width' => $this->watermarkTextStrokeWidth ?? 0,
-                'angle' => $this->watermarkTextAngle,
-                'custom_x' => $this->customTextPositionX,
-                'custom_y' => $this->customTextPositionY,
-            ];
-        }
-
-        $globalConfig = config('moonshine-intervention-image.watermark_text', []);
-
-        if (($globalConfig['enabled'] ?? false) && ($globalConfig['text'] ?? null)) {
-            $position = $this->watermarkTextPosition?->value ?? ($globalConfig['position'] ?? 'bottom-right');
-            $customX = $this->customTextPositionX ?? $globalConfig['custom_position']['x'] ?? null;
-            $customY = $this->customTextPositionY ?? $globalConfig['custom_position']['y'] ?? null;
-
-            return [
-                'text' => $globalConfig['text'],
-                'font' => $this->watermarkTextFont ?? $globalConfig['font'] ?? null,
-                'size' => $this->watermarkTextSize ?? ($globalConfig['size'] ?? 24),
-                'color' => $this->watermarkTextColor ?? ($globalConfig['color'] ?? 'ffffff'),
-                'position' => $position,
-                'offset_x' => $this->watermarkTextOffsetX ?? ($globalConfig['offset_x'] ?? 10),
-                'offset_y' => $this->watermarkTextOffsetY ?? ($globalConfig['offset_y'] ?? 10),
-                'stroke_color' => $this->watermarkTextStrokeColor ?? $globalConfig['stroke_color'] ?? null,
-                'stroke_width' => $this->watermarkTextStrokeWidth ?? ($globalConfig['stroke_width'] ?? 0),
-                'angle' => $this->watermarkTextAngle ?? $globalConfig['angle'] ?? null,
-                'custom_x' => $customX,
-                'custom_y' => $customY,
-            ];
-        }
-
-        return null;
-    }
-
-    protected function isQueueEnabled(): bool
-    {
-        if ($this->queueEnabled !== null) {
-            return $this->queueEnabled;
-        }
-
-        return config('moonshine-intervention-image.queue.enabled', false);
-    }
-
-    protected function isLoggingEnabled(): bool
-    {
-        if ($this->logging !== null) {
-            return $this->logging;
-        }
-
-        return config('moonshine-intervention-image.default.logging', false);
-    }
-
-    protected function resolveOnApply(): ?Closure
-    {
-        return function (mixed $item) {
-            $requestValue = $this->getRequestValue();
-            $remainingValues = $this->getRemainingValues();
-
-            data_forget($item, $this->getHiddenRemainingValuesKey());
-
-            $newValue = $this->isMultiple() ? $remainingValues : $remainingValues->first();
-
-            if ($requestValue !== false) {
-                if ($this->isMultiple()) {
-                    $paths = [];
-
-                    foreach ($requestValue as $file) {
-                        $paths[] = $this->storeFile($file);
-                    }
-
-                    $newValue = $newValue->merge($paths)
-                        ->values()
-                        ->unique()
-                        ->toArray();
-                } else {
-                    $newValue = $this->storeFile($requestValue);
-                    $this->setRemainingValues([]);
-                }
-            }
-
-            if ($newValue instanceof Collection) {
-                $newValue = $newValue->toArray();
-            }
-
-            $this->removeExcludedFiles(
-                $this->getCustomName() !== null || $this->isKeepOriginalFileName()
-                    ? $newValue
-                    : null,
-            );
-
-            return data_set($item, $this->getColumn(), $newValue);
-        };
-    }
-
-    protected function storeFile(UploadedFile $file): string
-    {
-        $extension = $file->extension();
-
-        if (! $this->isAllowedExtension($extension)) {
-            return $file->store($this->getDir(), $this->getOptions());
-        }
-
-        if ($this->isKeepOriginalFileName()) {
-            $path = $file->storeAs(
-                $this->getDir(),
-                $file->getClientOriginalName(),
-                $this->getOptions(),
-            );
-        } elseif (! \is_null($this->getCustomName())) {
-            $path = $file->storeAs(
-                $this->getDir(),
-                \call_user_func($this->getCustomName(), $file, $this),
-                $this->getOptions(),
-            );
-        } else {
-            $path = $file->store($this->getDir(), $this->getOptions());
-        }
-
-        if ($path) {
-            $this->processImage($path);
-        }
-
-        return $path;
-    }
-
     public function processStoredImage(string $relativePath): void
     {
         $this->processImage($relativePath);
@@ -533,14 +328,6 @@ final class InterventionImage extends MoonShineImage
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($relativePath)) {
-            $this->logError('File not exists in storage', ['path' => $relativePath]);
-
-            return;
-        }
-
-        $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
-
-        if (! in_array($extension, $this->supportedFormats, true)) {
             return;
         }
 
@@ -553,21 +340,8 @@ final class InterventionImage extends MoonShineImage
 
     protected function dispatchToQueue(string $relativePath, string $disk): void
     {
-        $job = new ProcessImage($relativePath, $disk, [
-            'quality' => $this->quality,
-            'quality_webp' => $this->qualityWebp,
-            'quality_avif' => $this->qualityAvif,
-            'generate_webp' => $this->generateWebp,
-            'generate_avif' => $this->generateAvif,
-            'strip_metadata' => $this->stripMetadata,
-            'max_width' => $this->maxWidth,
-            'max_height' => $this->maxHeight,
-            'png_indexed' => $this->pngIndexed,
-            'png_colors' => $this->pngColors,
-            'logging' => $this->isLoggingEnabled(),
-            'watermark' => $this->getWatermarkOptions(),
-            'watermark_text' => $this->getWatermarkTextOptions(),
-        ]);
+        $config = $this->createProcessingConfig();
+        $job = new ProcessImage($relativePath, $disk, $config->toArray());
 
         $connection = $this->queueConnection ?? config('moonshine-intervention-image.queue.connection');
         $queue = $this->queueName ?? config('moonshine-intervention-image.queue.queue', 'default');
@@ -584,13 +358,6 @@ final class InterventionImage extends MoonShineImage
         }
 
         dispatch($job);
-
-        $this->logInfo('Job dispatched', [
-            'path' => $relativePath,
-            'queue' => $queue,
-            'connection' => $connection,
-            'delay' => $delay,
-        ]);
     }
 
     protected function processImageSync(string $relativePath, string $disk): void
@@ -598,287 +365,85 @@ final class InterventionImage extends MoonShineImage
         $storage = Storage::disk($disk);
         $fullPath = $storage->path($relativePath);
 
-        $this->optimizeImage($fullPath);
-
-        if ($this->generateWebp) {
-            $this->generateWebpVersion($fullPath);
-        }
-
-        if ($this->generateAvif) {
-            $this->generateAvifVersion($fullPath);
-        }
+        $config = $this->createProcessingConfig();
+        $processor = new ImageProcessor($config);
+        $processor->process($fullPath);
     }
 
-    protected function applyWatermarks(ImageInterface $image, string $basePath): ImageInterface
+    protected function createProcessingConfig(): ImageProcessingConfig
+    {
+        return new ImageProcessingConfig(
+            quality: $this->quality,
+            qualityWebp: $this->qualityWebp,
+            qualityAvif: $this->qualityAvif,
+            generateWebp: $this->generateWebp,
+            generateAvif: $this->generateAvif,
+            stripMetadata: $this->stripMetadata,
+            maxWidth: $this->maxWidth,
+            maxHeight: $this->maxHeight,
+            pngIndexed: $this->pngIndexed,
+            pngColors: $this->pngColors,
+            logging: $this->isLoggingEnabled(),
+            watermark: $this->getWatermarkOptions(),
+            watermarkText: $this->getWatermarkTextOptions(),
+        );
+    }
+
+    protected function isQueueEnabled(): bool
+    {
+        return $this->queueEnabled ?? config('moonshine-intervention-image.queue.enabled', false);
+    }
+
+    protected function isLoggingEnabled(): bool
+    {
+        return $this->logging ?? config('moonshine-intervention-image.default.logging', false);
+    }
+
+    protected function getWatermarkOptions(): ?array
     {
         if ($this->watermarkDisabled) {
-            return $image;
+            return null;
         }
 
-        $watermarkOptions = $this->getWatermarkOptions();
-        if ($watermarkOptions !== null && file_exists($watermarkOptions['image'])) {
-            $this->applyImageWatermark($image, $watermarkOptions);
-        }
+        $config = WatermarkConfig::fromFieldAndConfig(
+            $this->watermarkImage,
+            $this->watermarkPosition,
+            $this->watermarkOffsetX,
+            $this->watermarkOffsetY,
+            $this->watermarkOpacity,
+            $this->watermarkWidth,
+            $this->watermarkHeight,
+            $this->customPositionX,
+            $this->customPositionY,
+            config('moonshine-intervention-image.watermark', []),
+        );
 
-        $watermarkTextOptions = $this->getWatermarkTextOptions();
-        if ($watermarkTextOptions !== null) {
-            $this->applyTextWatermark($image, $basePath, $watermarkTextOptions);
-        }
-
-        return $image;
+        return $config?->toArray();
     }
 
-    protected function applyImageWatermark(ImageInterface $image, array $options): void
+    protected function getWatermarkTextOptions(): ?array
     {
-        try {
-            $watermarkPath = $options['image'];
-            $position = $options['position'] ?? 'bottom-right';
-            $offsetX = $options['offset_x'] ?? 10;
-            $offsetY = $options['offset_y'] ?? 10;
-            $opacity = $options['opacity'] ?? 100;
-            $width = $options['width'] ?? null;
-            $height = $options['height'] ?? null;
-
-            $watermark = Image::read($watermarkPath);
-
-            if ($width !== null || $height !== null) {
-                $watermark = $watermark->resize($width, $height);
-            }
-
-            if ($position === 'custom' && $options['custom_x'] !== null && $options['custom_y'] !== null) {
-                $image->place(
-                    $watermark,
-                    'top-left',
-                    $options['custom_x'],
-                    $options['custom_y'],
-                    $opacity
-                );
-            } else {
-                $image->place(
-                    $watermark,
-                    $position,
-                    $offsetX,
-                    $offsetY,
-                    $opacity
-                );
-            }
-
-            $this->logInfo('Image watermark applied', [
-                'watermark' => $watermarkPath,
-                'position' => $position,
-                'opacity' => $opacity,
-                'width' => $width,
-                'height' => $height,
-            ]);
-        } catch (\Exception $e) {
-            $this->logError('Image watermark error', [
-                'watermark' => $options['image'],
-                'error' => $e->getMessage(),
-            ]);
+        if ($this->watermarkDisabled) {
+            return null;
         }
-    }
 
-    protected function applyTextWatermark(ImageInterface $image, string $basePath, array $options): void
-    {
-        try {
-            $imageWidth = $image->width();
-            $imageHeight = $image->height();
-            $position = $options['position'];
+        $config = TextWatermarkConfig::fromFieldAndConfig(
+            $this->watermarkText,
+            $this->watermarkTextFont,
+            $this->watermarkTextSize,
+            $this->watermarkTextColor,
+            $this->watermarkTextPosition,
+            $this->watermarkTextOffsetX,
+            $this->watermarkTextOffsetY,
+            $this->watermarkTextStrokeColor,
+            $this->watermarkTextStrokeWidth,
+            $this->watermarkTextAngle,
+            $this->customTextPositionX,
+            $this->customTextPositionY,
+            config('moonshine-intervention-image.watermark_text', []),
+        );
 
-            if ($position === 'custom' && $options['custom_x'] !== null && $options['custom_y'] !== null) {
-                $x = $options['custom_x'];
-                $y = $options['custom_y'];
-                $align = 'left';
-                $valign = 'top';
-            } else {
-                [$x, $y, $align, $valign] = $this->calculateTextPosition(
-                    $imageWidth,
-                    $imageHeight,
-                    $options['size'],
-                    $position,
-                    $options['offset_x'],
-                    $options['offset_y']
-                );
-            }
-
-            $image->text($options['text'], $x, $y, function ($font) use ($basePath, $options, $align, $valign) {
-                $fontPath = $options['font'] ?? null;
-
-                if ($fontPath !== null && file_exists($fontPath)) {
-                    $font->filename($fontPath);
-                } elseif ($fontPath !== null) {
-                    $relativeFontPath = dirname($basePath).'/'.$fontPath;
-                    if (file_exists($relativeFontPath)) {
-                        $font->filename($relativeFontPath);
-                    }
-                }
-
-                $font->size($options['size']);
-                $font->color($options['color']);
-                $font->align($align);
-                $font->valign($valign);
-
-                $strokeColor = $options['stroke_color'] ?? null;
-                $strokeWidth = $options['stroke_width'] ?? 0;
-
-                if ($strokeColor !== null && $strokeWidth > 0) {
-                    $font->stroke($strokeColor, $strokeWidth);
-                }
-
-                $angle = $options['angle'] ?? null;
-                if ($angle !== null) {
-                    $font->angle($angle);
-                }
-            });
-
-            $this->logInfo('Text watermark applied', [
-                'text' => $options['text'],
-                'position' => $options['position'],
-                'offset_x' => $options['offset_x'],
-                'offset_y' => $options['offset_y'],
-                'x' => $x,
-                'y' => $y,
-            ]);
-        } catch (\Exception $e) {
-            $this->logError('Text watermark error', [
-                'text' => $options['text'],
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    protected function calculateTextPosition(
-        int $imageWidth,
-        int $imageHeight,
-        int $fontSize,
-        string $position,
-        int $offsetX,
-        int $offsetY
-    ): array {
-        $padding = 10;
-
-        return match ($position) {
-            'top-left' => [$padding + $offsetX, $padding + $offsetY, 'left', 'top'],
-            'top' => [$imageWidth / 2 + $offsetX, $padding + $offsetY, 'center', 'top'],
-            'top-right' => [$imageWidth - $padding + $offsetX, $padding + $offsetY, 'right', 'top'],
-            'left' => [$padding + $offsetX, $imageHeight / 2 + $offsetY, 'left', 'middle'],
-            'center' => [$imageWidth / 2 + $offsetX, $imageHeight / 2 + $offsetY, 'center', 'middle'],
-            'right' => [$imageWidth - $padding + $offsetX, $imageHeight / 2 + $offsetY, 'right', 'middle'],
-            'bottom-left' => [$padding + $offsetX, $imageHeight - $padding + $offsetY, 'left', 'bottom'],
-            'bottom' => [$imageWidth / 2 + $offsetX, $imageHeight - $padding + $offsetY, 'center', 'bottom'],
-            'bottom-right' => [$imageWidth - $padding + $offsetX, $imageHeight - $padding + $offsetY, 'right', 'bottom'],
-            default => [$imageWidth - $padding + $offsetX, $imageHeight - $padding + $offsetY, 'right', 'bottom'],
-        };
-    }
-
-    protected function optimizeImage(string $fullPath): void
-    {
-        $sizeBefore = file_exists($fullPath) ? filesize($fullPath) : 0;
-
-        try {
-            $image = Image::read($fullPath);
-
-            if ($this->maxWidth !== null || $this->maxHeight !== null) {
-                $image = $image->scaleDown(
-                    width: $this->maxWidth,
-                    height: $this->maxHeight
-                );
-            }
-
-            $extension = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
-
-            if ($extension === 'png' && $this->pngIndexed) {
-                $image->reduceColors($this->pngColors);
-            }
-
-            $this->applyWatermarks($image, $fullPath);
-
-            $encoded = match ($extension) {
-                'jpg', 'jpeg' => $image->toJpeg(
-                    quality: $this->quality,
-                    progressive: true,
-                    strip: $this->stripMetadata,
-                ),
-                'png' => $image->toPng(interlaced: true),
-                'gif' => $image->toGif(),
-                'webp' => $image->toWebp(quality: $this->quality),
-                default => null,
-            };
-
-            if ($encoded !== null) {
-                $encoded->save($fullPath);
-
-                $sizeAfter = file_exists($fullPath) ? filesize($fullPath) : 0;
-                $saved = $sizeBefore - $sizeAfter;
-                $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 2) : 0;
-
-                $this->logInfo('Optimized', [
-                    'path' => $fullPath,
-                    'format' => $extension,
-                    'before_bytes' => $sizeBefore,
-                    'after_bytes' => $sizeAfter,
-                    'saved_percent' => $savedPercent,
-                ]);
-            }
-        } catch (\Exception $e) {
-            $this->logError('Optimization error', [
-                'path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    protected function generateWebpVersion(string $fullPath): void
-    {
-        $webpPath = $this->getConvertedPath($fullPath, 'webp');
-
-        try {
-            $image = Image::read($fullPath);
-            $encoded = $image->toWebp(quality: $this->qualityWebp);
-            $encoded->save($webpPath);
-
-            if (file_exists($webpPath)) {
-                $this->logInfo('WebP created', [
-                    'path' => $webpPath,
-                    'size_bytes' => filesize($webpPath),
-                ]);
-            }
-        } catch (\Exception $e) {
-            $this->logError('WebP error', [
-                'path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    protected function generateAvifVersion(string $fullPath): void
-    {
-        $avifPath = $this->getConvertedPath($fullPath, 'avif');
-
-        try {
-            $image = Image::read($fullPath);
-            $encoded = $image->toAvif(quality: $this->qualityAvif);
-            $encoded->save($avifPath);
-
-            if (file_exists($avifPath)) {
-                $this->logInfo('AVIF created', [
-                    'path' => $avifPath,
-                    'size_bytes' => filesize($avifPath),
-                ]);
-            }
-        } catch (\Exception $e) {
-            $this->logError('AVIF error', [
-                'path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    protected function getConvertedPath(string $originalPath, string $format): string
-    {
-        $info = pathinfo($originalPath);
-
-        return $info['dirname'].'/'.$info['filename'].'.'.$format;
+        return $config?->toArray();
     }
 
     public function deleteFile(string $fileName): bool
@@ -892,56 +457,38 @@ final class InterventionImage extends MoonShineImage
     {
         $disk = $this->getDisk();
         $fullPath = $this->getPrependedDir($fileName);
+        $storage = $this->getCore()->getStorage(disk: $disk);
 
-        $info = pathinfo($fullPath);
-        $basePath = $info['dirname'].'/'.$info['filename'];
+        $basePath = PathHelper::getConvertedPath($fullPath, '');
 
         foreach (['webp', 'avif'] as $format) {
-            $conversionPath = $basePath.'.'.$format;
+            $conversionPath = $basePath.$format;
 
-            if ($this->getCore()->getStorage(disk: $disk)->exists($conversionPath)) {
-                $this->getCore()->getStorage(disk: $disk)->delete($conversionPath);
+            if ($storage->exists($conversionPath)) {
+                $storage->delete($conversionPath);
             }
         }
     }
 
     public function getWebpPath(string $fileName): ?string
     {
-        $info = pathinfo($fileName);
-        $webpPath = $info['dirname'].'/'.$info['filename'].'.webp';
-        $fullPath = $this->getPrependedDir($webpPath);
-
-        if ($this->getCore()->getStorage(disk: $this->getDisk())->exists($fullPath)) {
-            return $this->getPath($fullPath);
-        }
-
-        return null;
+        return $this->getConvertedPath($fileName, 'webp');
     }
 
     public function getAvifPath(string $fileName): ?string
     {
-        $info = pathinfo($fileName);
-        $avifPath = $info['dirname'].'/'.$info['filename'].'.avif';
-        $fullPath = $this->getPrependedDir($avifPath);
+        return $this->getConvertedPath($fileName, 'avif');
+    }
+
+    private function getConvertedPath(string $fileName, string $format): ?string
+    {
+        $convertedPath = PathHelper::getConvertedPath($fileName, $format);
+        $fullPath = $this->getPrependedDir($convertedPath);
 
         if ($this->getCore()->getStorage(disk: $this->getDisk())->exists($fullPath)) {
             return $this->getPath($fullPath);
         }
 
         return null;
-    }
-
-    protected function logInfo(string $message, array $context = []): void
-    {
-        if ($this->isLoggingEnabled()) {
-            Log::info('[InterventionImage] '.$message, $context);
-        }
-    }
-
-    protected function logError(string $message, array $context = []): void
-    {
-        if ($this->isLoggingEnabled()) {
-            Log::error('[InterventionImage] '.$message, $context);
-        }
     }
 }

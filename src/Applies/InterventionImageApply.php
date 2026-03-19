@@ -70,14 +70,16 @@ final class InterventionImageApply implements ApplyContract
                 $file->getClientOriginalName(),
                 $field->getOptions(),
             );
-        } elseif (! \is_null($field->getCustomName())) {
+        } elseif ($field->getCustomName() !== null) {
             $path = $file->storeAs(
                 $field->getDir(),
                 \call_user_func($field->getCustomName(), $file, $field),
                 $field->getOptions(),
             );
         } else {
-            if (! $path = $file->store($field->getDir(), $field->getOptions())) {
+            $path = $file->store($field->getDir(), $field->getOptions());
+
+            if (! $path) {
                 throw FileFieldException::failedSave();
             }
         }
