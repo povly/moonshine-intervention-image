@@ -11,8 +11,10 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Interfaces\ImageInterface;
 use Intervention\Image\Laravel\Facades\Image;
 use MoonShine\UI\Fields\Image as MoonShineImage;
+use Povly\MoonshineInterventionImage\Enums\WatermarkPosition;
 use Povly\MoonshineInterventionImage\Jobs\ProcessImage;
 
 final class InterventionImage extends MoonShineImage
@@ -48,6 +50,50 @@ final class InterventionImage extends MoonShineImage
     protected ?string $queueName = null;
 
     protected DateTimeInterface|DateInterval|int|null $queueDelay = null;
+
+    protected ?string $watermarkImage = null;
+
+    protected ?WatermarkPosition $watermarkPosition = null;
+
+    protected ?int $watermarkOffsetX = null;
+
+    protected ?int $watermarkOffsetY = null;
+
+    protected ?int $watermarkOpacity = null;
+
+    protected ?int $watermarkWidth = null;
+
+    protected ?int $watermarkHeight = null;
+
+    protected ?string $watermarkText = null;
+
+    protected ?string $watermarkTextFont = null;
+
+    protected ?int $watermarkTextSize = null;
+
+    protected ?string $watermarkTextColor = null;
+
+    protected ?WatermarkPosition $watermarkTextPosition = null;
+
+    protected ?int $watermarkTextOffsetX = null;
+
+    protected ?int $watermarkTextOffsetY = null;
+
+    protected ?string $watermarkTextStrokeColor = null;
+
+    protected ?int $watermarkTextStrokeWidth = null;
+
+    protected ?int $watermarkTextAngle = null;
+
+    protected bool $watermarkDisabled = false;
+
+    protected ?int $customPositionX = null;
+
+    protected ?int $customPositionY = null;
+
+    protected ?int $customTextPositionX = null;
+
+    protected ?int $customTextPositionY = null;
 
     public function preset(string $name): static
     {
@@ -181,6 +227,208 @@ final class InterventionImage extends MoonShineImage
         $this->queueDelay = $delay;
 
         return $this;
+    }
+
+    public function watermarkImage(
+        ?string $path = null,
+        WatermarkPosition|string|null $position = null,
+        int $offsetX = 10,
+        int $offsetY = 10,
+        int $opacity = 100,
+        ?int $width = null,
+        ?int $height = null,
+        ?int $customX = null,
+        ?int $customY = null
+    ): static {
+        if ($path !== null) {
+            $this->watermarkImage = $path;
+        }
+
+        if ($position !== null) {
+            if (is_string($position)) {
+                $this->watermarkPosition = WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight;
+            } else {
+                $this->watermarkPosition = $position;
+            }
+        }
+
+        $this->watermarkOffsetX = $offsetX;
+        $this->watermarkOffsetY = $offsetY;
+        $this->watermarkOpacity = max(0, min(100, $opacity));
+        $this->watermarkWidth = $width;
+        $this->watermarkHeight = $height;
+        $this->customPositionX = $customX;
+        $this->customPositionY = $customY;
+
+        return $this;
+    }
+
+    public function watermarkText(
+        ?string $text = null,
+        WatermarkPosition|string|null $position = null,
+        int $offsetX = 10,
+        int $offsetY = 10,
+        int $size = 24,
+        string $color = 'ffffff',
+        ?int $customX = null,
+        ?int $customY = null
+    ): static {
+        if ($text !== null) {
+            $this->watermarkText = $text;
+        }
+
+        if ($position !== null) {
+            if (is_string($position)) {
+                $this->watermarkTextPosition = WatermarkPosition::tryFrom($position) ?? WatermarkPosition::BottomRight;
+            } else {
+                $this->watermarkTextPosition = $position;
+            }
+        }
+
+        $this->watermarkTextOffsetX = $offsetX;
+        $this->watermarkTextOffsetY = $offsetY;
+        $this->watermarkTextSize = $size;
+        $this->watermarkTextColor = $color;
+        $this->customTextPositionX = $customX;
+        $this->customTextPositionY = $customY;
+
+        return $this;
+    }
+
+    public function watermarkTextFont(?string $fontPath): static
+    {
+        $this->watermarkTextFont = $fontPath;
+
+        return $this;
+    }
+
+    public function watermarkTextStroke(?string $color = '000000', int $width = 2): static
+    {
+        $this->watermarkTextStrokeColor = $color;
+        $this->watermarkTextStrokeWidth = $width;
+
+        return $this;
+    }
+
+    public function watermarkTextAngle(?int $angle): static
+    {
+        $this->watermarkTextAngle = $angle;
+
+        return $this;
+    }
+
+    public function disableWatermark(bool $disable = true): static
+    {
+        $this->watermarkDisabled = $disable;
+
+        return $this;
+    }
+
+    protected function hasWatermark(): bool
+    {
+        if ($this->watermarkDisabled) {
+            return false;
+        }
+
+        $globalImageEnabled = config('moonshine-intervention-image.watermark.enabled', false);
+        $globalTextEnabled = config('moonshine-intervention-image.watermark_text.enabled', false);
+
+        return $this->watermarkImage !== null
+            || $this->watermarkText !== null
+            || $globalImageEnabled
+            || $globalTextEnabled;
+    }
+
+    protected function getWatermarkOptions(): ?array
+    {
+        if ($this->watermarkDisabled) {
+            return null;
+        }
+
+        if ($this->watermarkImage !== null) {
+            return [
+                'image' => $this->watermarkImage,
+                'position' => $this->watermarkPosition?->value ?? 'bottom-right',
+                'offset_x' => $this->watermarkOffsetX ?? 10,
+                'offset_y' => $this->watermarkOffsetY ?? 10,
+                'opacity' => $this->watermarkOpacity ?? 100,
+                'width' => $this->watermarkWidth,
+                'height' => $this->watermarkHeight,
+                'custom_x' => $this->customPositionX,
+                'custom_y' => $this->customPositionY,
+            ];
+        }
+
+        $globalConfig = config('moonshine-intervention-image.watermark', []);
+
+        if (($globalConfig['enabled'] ?? false) && ($globalConfig['image'] ?? null)) {
+            $position = $this->watermarkPosition?->value ?? ($globalConfig['position'] ?? 'bottom-right');
+            $customX = $this->customPositionX ?? $globalConfig['custom_position']['x'] ?? null;
+            $customY = $this->customPositionY ?? $globalConfig['custom_position']['y'] ?? null;
+
+            return [
+                'image' => $globalConfig['image'],
+                'position' => $position,
+                'offset_x' => $this->watermarkOffsetX ?? ($globalConfig['offset_x'] ?? 10),
+                'offset_y' => $this->watermarkOffsetY ?? ($globalConfig['offset_y'] ?? 10),
+                'opacity' => $this->watermarkOpacity ?? ($globalConfig['opacity'] ?? 100),
+                'width' => $this->watermarkWidth ?? ($globalConfig['width'] ?? null),
+                'height' => $this->watermarkHeight ?? ($globalConfig['height'] ?? null),
+                'custom_x' => $customX,
+                'custom_y' => $customY,
+            ];
+        }
+
+        return null;
+    }
+
+    protected function getWatermarkTextOptions(): ?array
+    {
+        if ($this->watermarkDisabled) {
+            return null;
+        }
+
+        if ($this->watermarkText !== null) {
+            return [
+                'text' => $this->watermarkText,
+                'font' => $this->watermarkTextFont,
+                'size' => $this->watermarkTextSize ?? 24,
+                'color' => $this->watermarkTextColor ?? 'ffffff',
+                'position' => $this->watermarkTextPosition?->value ?? 'bottom-right',
+                'offset_x' => $this->watermarkTextOffsetX ?? 10,
+                'offset_y' => $this->watermarkTextOffsetY ?? 10,
+                'stroke_color' => $this->watermarkTextStrokeColor,
+                'stroke_width' => $this->watermarkTextStrokeWidth ?? 0,
+                'angle' => $this->watermarkTextAngle,
+                'custom_x' => $this->customTextPositionX,
+                'custom_y' => $this->customTextPositionY,
+            ];
+        }
+
+        $globalConfig = config('moonshine-intervention-image.watermark_text', []);
+
+        if (($globalConfig['enabled'] ?? false) && ($globalConfig['text'] ?? null)) {
+            $position = $this->watermarkTextPosition?->value ?? ($globalConfig['position'] ?? 'bottom-right');
+            $customX = $this->customTextPositionX ?? $globalConfig['custom_position']['x'] ?? null;
+            $customY = $this->customTextPositionY ?? $globalConfig['custom_position']['y'] ?? null;
+
+            return [
+                'text' => $globalConfig['text'],
+                'font' => $this->watermarkTextFont ?? $globalConfig['font'] ?? null,
+                'size' => $this->watermarkTextSize ?? ($globalConfig['size'] ?? 24),
+                'color' => $this->watermarkTextColor ?? ($globalConfig['color'] ?? 'ffffff'),
+                'position' => $position,
+                'offset_x' => $this->watermarkTextOffsetX ?? ($globalConfig['offset_x'] ?? 10),
+                'offset_y' => $this->watermarkTextOffsetY ?? ($globalConfig['offset_y'] ?? 10),
+                'stroke_color' => $this->watermarkTextStrokeColor ?? $globalConfig['stroke_color'] ?? null,
+                'stroke_width' => $this->watermarkTextStrokeWidth ?? ($globalConfig['stroke_width'] ?? 0),
+                'angle' => $this->watermarkTextAngle ?? $globalConfig['angle'] ?? null,
+                'custom_x' => $customX,
+                'custom_y' => $customY,
+            ];
+        }
+
+        return null;
     }
 
     protected function isQueueEnabled(): bool
@@ -317,6 +565,8 @@ final class InterventionImage extends MoonShineImage
             'png_indexed' => $this->pngIndexed,
             'png_colors' => $this->pngColors,
             'logging' => $this->isLoggingEnabled(),
+            'watermark' => $this->getWatermarkOptions(),
+            'watermark_text' => $this->getWatermarkTextOptions(),
         ]);
 
         $connection = $this->queueConnection ?? config('moonshine-intervention-image.queue.connection');
@@ -359,6 +609,168 @@ final class InterventionImage extends MoonShineImage
         }
     }
 
+    protected function applyWatermarks(ImageInterface $image, string $basePath): ImageInterface
+    {
+        if ($this->watermarkDisabled) {
+            return $image;
+        }
+
+        $watermarkOptions = $this->getWatermarkOptions();
+        if ($watermarkOptions !== null && file_exists($watermarkOptions['image'])) {
+            $this->applyImageWatermark($image, $watermarkOptions);
+        }
+
+        $watermarkTextOptions = $this->getWatermarkTextOptions();
+        if ($watermarkTextOptions !== null) {
+            $this->applyTextWatermark($image, $basePath, $watermarkTextOptions);
+        }
+
+        return $image;
+    }
+
+    protected function applyImageWatermark(ImageInterface $image, array $options): void
+    {
+        try {
+            $watermarkPath = $options['image'];
+            $position = $options['position'] ?? 'bottom-right';
+            $offsetX = $options['offset_x'] ?? 10;
+            $offsetY = $options['offset_y'] ?? 10;
+            $opacity = $options['opacity'] ?? 100;
+            $width = $options['width'] ?? null;
+            $height = $options['height'] ?? null;
+
+            $watermark = Image::read($watermarkPath);
+
+            if ($width !== null || $height !== null) {
+                $watermark = $watermark->resize($width, $height);
+            }
+
+            if ($position === 'custom' && $options['custom_x'] !== null && $options['custom_y'] !== null) {
+                $image->place(
+                    $watermark,
+                    'top-left',
+                    $options['custom_x'],
+                    $options['custom_y'],
+                    $opacity
+                );
+            } else {
+                $image->place(
+                    $watermark,
+                    $position,
+                    $offsetX,
+                    $offsetY,
+                    $opacity
+                );
+            }
+
+            $this->logInfo('Image watermark applied', [
+                'watermark' => $watermarkPath,
+                'position' => $position,
+                'opacity' => $opacity,
+                'width' => $width,
+                'height' => $height,
+            ]);
+        } catch (\Exception $e) {
+            $this->logError('Image watermark error', [
+                'watermark' => $options['image'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function applyTextWatermark(ImageInterface $image, string $basePath, array $options): void
+    {
+        try {
+            $imageWidth = $image->width();
+            $imageHeight = $image->height();
+            $position = $options['position'];
+
+            if ($position === 'custom' && $options['custom_x'] !== null && $options['custom_y'] !== null) {
+                $x = $options['custom_x'];
+                $y = $options['custom_y'];
+                $align = 'left';
+                $valign = 'top';
+            } else {
+                [$x, $y, $align, $valign] = $this->calculateTextPosition(
+                    $imageWidth,
+                    $imageHeight,
+                    $options['size'],
+                    $position,
+                    $options['offset_x'],
+                    $options['offset_y']
+                );
+            }
+
+            $image->text($options['text'], $x, $y, function ($font) use ($basePath, $options, $align, $valign) {
+                $fontPath = $options['font'] ?? null;
+
+                if ($fontPath !== null && file_exists($fontPath)) {
+                    $font->filename($fontPath);
+                } elseif ($fontPath !== null) {
+                    $relativeFontPath = dirname($basePath).'/'.$fontPath;
+                    if (file_exists($relativeFontPath)) {
+                        $font->filename($relativeFontPath);
+                    }
+                }
+
+                $font->size($options['size']);
+                $font->color($options['color']);
+                $font->align($align);
+                $font->valign($valign);
+
+                $strokeColor = $options['stroke_color'] ?? null;
+                $strokeWidth = $options['stroke_width'] ?? 0;
+
+                if ($strokeColor !== null && $strokeWidth > 0) {
+                    $font->stroke($strokeColor, $strokeWidth);
+                }
+
+                $angle = $options['angle'] ?? null;
+                if ($angle !== null) {
+                    $font->angle($angle);
+                }
+            });
+
+            $this->logInfo('Text watermark applied', [
+                'text' => $options['text'],
+                'position' => $options['position'],
+                'offset_x' => $options['offset_x'],
+                'offset_y' => $options['offset_y'],
+                'x' => $x,
+                'y' => $y,
+            ]);
+        } catch (\Exception $e) {
+            $this->logError('Text watermark error', [
+                'text' => $options['text'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function calculateTextPosition(
+        int $imageWidth,
+        int $imageHeight,
+        int $fontSize,
+        string $position,
+        int $offsetX,
+        int $offsetY
+    ): array {
+        $padding = 10;
+
+        return match ($position) {
+            'top-left' => [$padding + $offsetX, $padding + $offsetY, 'left', 'top'],
+            'top' => [$imageWidth / 2 + $offsetX, $padding + $offsetY, 'center', 'top'],
+            'top-right' => [$imageWidth - $padding + $offsetX, $padding + $offsetY, 'right', 'top'],
+            'left' => [$padding + $offsetX, $imageHeight / 2 + $offsetY, 'left', 'middle'],
+            'center' => [$imageWidth / 2 + $offsetX, $imageHeight / 2 + $offsetY, 'center', 'middle'],
+            'right' => [$imageWidth - $padding + $offsetX, $imageHeight / 2 + $offsetY, 'right', 'middle'],
+            'bottom-left' => [$padding + $offsetX, $imageHeight - $padding + $offsetY, 'left', 'bottom'],
+            'bottom' => [$imageWidth / 2 + $offsetX, $imageHeight - $padding + $offsetY, 'center', 'bottom'],
+            'bottom-right' => [$imageWidth - $padding + $offsetX, $imageHeight - $padding + $offsetY, 'right', 'bottom'],
+            default => [$imageWidth - $padding + $offsetX, $imageHeight - $padding + $offsetY, 'right', 'bottom'],
+        };
+    }
+
     protected function optimizeImage(string $fullPath): void
     {
         $sizeBefore = file_exists($fullPath) ? filesize($fullPath) : 0;
@@ -378,6 +790,8 @@ final class InterventionImage extends MoonShineImage
             if ($extension === 'png' && $this->pngIndexed) {
                 $image->reduceColors($this->pngColors);
             }
+
+            $this->applyWatermarks($image, $fullPath);
 
             $encoded = match ($extension) {
                 'jpg', 'jpeg' => $image->toJpeg(

@@ -99,4 +99,57 @@ return [
             'png_indexed' => true,
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Watermark Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configure global watermarks for all images.
+    |
+    | enabled: Enable watermark globally (can be disabled per field)
+    | image: Path to watermark image
+    | text: Text watermark content
+    | position: top-left, top, top-right, left, center, right,
+    |           bottom-left, bottom, bottom-right, custom
+    | custom_position: [x, y] coordinates when position is 'custom'
+    | offset_x/y: Offset from position in pixels
+    | opacity: Image watermark opacity (0-100)
+    |
+    */
+
+    'watermark' => [
+        'enabled' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_ENABLED', false),
+
+        'image' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_IMAGE'),
+        'position' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_POSITION', 'bottom-right'),
+        'custom_position' => [
+            'x' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_CUSTOM_X'),
+            'y' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_CUSTOM_Y'),
+        ],
+        'offset_x' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_OFFSET_X', 10),
+        'offset_y' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_OFFSET_Y', 10),
+        'opacity' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_OPACITY', 100),
+        'width' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_WIDTH'),
+        'height' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_HEIGHT'),
+    ],
+
+    'watermark_text' => [
+        'enabled' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_ENABLED', false),
+
+        'text' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT'),
+        'font' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_FONT'),
+        'size' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_SIZE', 24),
+        'color' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_COLOR', 'ffffff'),
+        'position' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_POSITION', 'bottom-right'),
+        'custom_position' => [
+            'x' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_CUSTOM_X'),
+            'y' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_CUSTOM_Y'),
+        ],
+        'offset_x' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_OFFSET_X', 10),
+        'offset_y' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_OFFSET_Y', 10),
+        'stroke_color' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_STROKE_COLOR'),
+        'stroke_width' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_STROKE_WIDTH', 2),
+        'angle' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_ANGLE'),
+    ],
 ];
