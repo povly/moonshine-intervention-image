@@ -65,7 +65,10 @@ final class ImageProcessor
                     progressive: true,
                     strip: $this->config->stripMetadata,
                 ),
-                'png' => $image->toPng(interlaced: true),
+                'png' => $image->toPng(
+                    interlaced: true,
+                    indexed: $this->config->pngIndexed,
+                ),
                 'gif' => $image->toGif(),
                 'webp' => $image->toWebp(quality: $this->config->quality),
                 default => null,

@@ -23,6 +23,8 @@ final class MoonshineInterventionImageServiceProvider extends ServiceProvider
             'moonshine-intervention-image'
         );
 
+        $this->loadViewsFrom(__DIR__.'/../../resources/views', 'moonshine-intervention-image');
+
         $appliesRegister
             ->for(ModelResource::class)
             ->fields()
