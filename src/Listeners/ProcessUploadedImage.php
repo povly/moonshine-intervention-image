@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Povly\MoonshineInterventionImage\Listeners;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Povly\MoonshineInterventionImage\Services\ImageProcessor;
 use Povly\MoonshineInterventionImage\ValueObjects\ImageProcessingConfig;
@@ -19,11 +18,6 @@ final class ProcessUploadedImage
         $extension = strtolower(pathinfo($event->path, PATHINFO_EXTENSION));
 
         if (! in_array($extension, $this->imageExtensions, true)) {
-            Log::debug('[ProcessUploadedImage] File is not an image, skipping', [
-                'path' => $event->path,
-                'extension' => $extension,
-            ]);
-
             return;
         }
 
@@ -31,38 +25,15 @@ final class ProcessUploadedImage
         $fullPath = $storage->path($event->path);
 
         if (! file_exists($fullPath)) {
-            Log::error('[ProcessUploadedImage] File does not exist', [
-                'path' => $fullPath,
-            ]);
-
             return;
         }
 
-        $sizeBefore = filesize($fullPath);
         $config = $this->createConfig();
-
-        Log::debug('[ProcessUploadedImage] Starting image processing', [
-            'path' => $fullPath,
-            'extension' => $extension,
-            'size_before' => $sizeBefore,
-        ]);
 
         try {
             $processor = new ImageProcessor($config);
             $processor->process($fullPath);
-
-            $sizeAfter = file_exists($fullPath) ? filesize($fullPath) : 0;
-
-            Log::info('[ProcessUploadedImage] Image processed successfully', [
-                'path' => $fullPath,
-                'size_before' => $sizeBefore,
-                'size_after' => $sizeAfter,
-            ]);
         } catch (\Exception $e) {
-            Log::error('[ProcessUploadedImage] Image processing failed', [
-                'path' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 
