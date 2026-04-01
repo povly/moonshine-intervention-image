@@ -21,16 +21,20 @@ final class InterventionImageApply implements ApplyContract
             $requestValue = $field->getRequestValue();
             $remainingValues = $field->getRemainingValues();
 
-            Log::info('[InterventionImage] apply', [
-                'field' => $field->getColumn(),
-                'requestValueType' => get_debug_type($requestValue),
-                'requestValue' => $requestValue instanceof UploadedFile
-                    ? ['path' => $requestValue->getPathname(), 'originalName' => $requestValue->getClientOriginalName(), 'isValid' => $requestValue->isValid(), 'size' => $requestValue->getSize()]
-                    : $requestValue,
-                'remainingValues' => $remainingValues->toArray(),
-                'isMultiple' => $field->isMultiple(),
-                'requestNameDot' => $field->getRequestNameDot(),
-            ]);
+            $logging = (bool) config('moonshine-intervention-image.default.logging', false);
+
+            if ($logging) {
+                Log::info('[InterventionImage] apply', [
+                    'field' => $field->getColumn(),
+                    'requestValueType' => get_debug_type($requestValue),
+                    'requestValue' => $requestValue instanceof UploadedFile
+                        ? ['path' => $requestValue->getPathname(), 'originalName' => $requestValue->getClientOriginalName(), 'isValid' => $requestValue->isValid(), 'size' => $requestValue->getSize()]
+                        : $requestValue,
+                    'remainingValues' => $remainingValues->toArray(),
+                    'isMultiple' => $field->isMultiple(),
+                    'requestNameDot' => $field->getRequestNameDot(),
+                ]);
+            }
 
             data_forget($item, $field->getHiddenRemainingValuesKey());
 
