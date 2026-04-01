@@ -29,14 +29,16 @@ final class InterventionImageApply implements ApplyContract
                     $paths = [];
 
                     foreach ($requestValue as $file) {
-                        $paths[] = $this->store($field, $file);
+                        if ($file instanceof UploadedFile && $file->isValid()) {
+                            $paths[] = $this->store($field, $file);
+                        }
                     }
 
                     $newValue = $newValue->merge($paths)
                         ->values()
                         ->unique()
                         ->toArray();
-                } else {
+                } elseif ($requestValue instanceof UploadedFile && $requestValue->isValid()) {
                     $newValue = $this->store($field, $requestValue);
                     $field->setRemainingValues([]);
                 }
