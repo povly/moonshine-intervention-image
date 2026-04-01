@@ -7,6 +7,7 @@ namespace Povly\MoonshineInterventionImage\Applies;
 use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use MoonShine\Contracts\UI\ApplyContract;
 use MoonShine\Contracts\UI\FieldContract;
 use MoonShine\Crud\Exceptions\FileFieldException;
@@ -19,6 +20,17 @@ final class InterventionImageApply implements ApplyContract
         return function (mixed $item) use ($field): mixed {
             $requestValue = $field->getRequestValue();
             $remainingValues = $field->getRemainingValues();
+
+            Log::info('[InterventionImage] apply', [
+                'field' => $field->getColumn(),
+                'requestValueType' => get_debug_type($requestValue),
+                'requestValue' => $requestValue instanceof UploadedFile
+                    ? ['path' => $requestValue->getPathname(), 'originalName' => $requestValue->getClientOriginalName(), 'isValid' => $requestValue->isValid(), 'size' => $requestValue->getSize()]
+                    : $requestValue,
+                'remainingValues' => $remainingValues->toArray(),
+                'isMultiple' => $field->isMultiple(),
+                'requestNameDot' => $field->getRequestNameDot(),
+            ]);
 
             data_forget($item, $field->getHiddenRemainingValuesKey());
 
