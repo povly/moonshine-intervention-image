@@ -90,6 +90,11 @@ return [
         'stroke_width' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_STROKE_WIDTH', 2),
         'angle' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_ANGLE'),
     ],
+
+    'optimize' => [
+        'disk' => env('MOONSHINE_INTERVENTION_IMAGE_OPTIMIZE_DISK', 'public'),
+        'exclude_paths' => [],
+    ],
 ];
 ```
 ## Basic Usage
@@ -351,6 +356,112 @@ The `ProcessImage` job handles:
 # Start queue worker
 php artisan queue:work --queue=images
 ```
+
+## Optimize Command
+
+The `moonshine:image:optimize` Artisan command allows you to batch-optimize existing images. It scans a storage disk (or specific paths), applies optimization, and optionally generates WebP/AVIF conversions — using settings from your config.
+
+### Basic Usage
+
+```bash
+# Optimize all images on the default disk (from config)
+php artisan moonshine:image:optimize
+
+# Optimize specific directories or files (relative to disk root)
+php artisan moonshine:image:optimize banners/ uploads/gallery/
+
+# Use a different storage disk
+php artisan moonshine:image:optimize --disk=s3
+```
+
+### Queue vs Sync
+
+By default, the command reads `moonshine-intervention-image.queue.enabled` from config. Override with flags:
+
+```bash
+# Force queue processing
+php artisan moonshine:image:optimize --queue
+
+# Force synchronous (direct) processing
+php artisan moonshine:image:optimize --sync
+```
+
+### Apply a Preset
+
+```bash
+php artisan moonshine:image:optimize --preset=gallery
+```
+
+### Override Options
+
+All processing options can be overridden per run:
+
+```bash
+# Generate WebP and AVIF
+php artisan moonshine:image:optimize --generate-webp --generate-avif
+
+# Disable format generation (even if enabled in config)
+php artisan moonshine:image:optimize --no-webp --no-avif
+
+# Override quality
+php artisan moonshine:image:optimize --quality=75 --quality-webp=70 --quality-avif=55
+
+# Strip EXIF/IPTC metadata
+php artisan moonshine:image:optimize --strip-metadata
+
+# Resize images (keeps aspect ratio)
+php artisan moonshine:image:optimize --max-width=1200 --max-height=800
+```
+
+### Combined Example
+
+```bash
+php artisan moonshine:image:optimize banners/ uploads/ \
+    --disk=public \
+    --preset=gallery \
+    --queue \
+    --quality=80 \
+    --strip-metadata
+```
+
+### Config
+
+```php
+// config/moonshine-intervention-image.php
+'optimize' => [
+    'disk' => env('MOONSHINE_INTERVENTION_IMAGE_OPTIMIZE_DISK', 'public'),
+    'exclude_paths' => [],  // Paths to skip (relative to disk root)
+],
+```
+
+`exclude_paths` is an array of directory paths that will be skipped during full-disk scans:
+
+```php
+'exclude_paths' => [
+    'assets/icons',
+    'avatars/raw',
+],
+```
+
+### Command Options
+
+| Option | Description |
+|--------|-------------|
+| `paths` | Specific file or directory paths to optimize (positional, optional) |
+| `--disk=` | Storage disk to scan (default: from config) |
+| `--preset=` | Apply a named preset from config |
+| `--queue` | Force queue processing |
+| `--sync` | Force synchronous processing |
+| `--quality=` | Override quality for original image (1-100) |
+| `--quality-webp=` | Override quality for WebP (1-100) |
+| `--quality-avif=` | Override quality for AVIF (1-100) |
+| `--generate-webp` | Generate WebP versions |
+| `--no-webp` | Disable WebP generation |
+| `--generate-avif` | Generate AVIF versions |
+| `--no-avif` | Disable AVIF generation |
+| `--strip-metadata` | Strip EXIF/IPTC metadata |
+| `--max-width=` | Maximum image width (keeps aspect ratio) |
+| `--max-height=` | Maximum image height (keeps aspect ratio) |
 ## Methods
 | Method | Description |
 |--------|-------------|
