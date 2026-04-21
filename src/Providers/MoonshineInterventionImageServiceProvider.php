@@ -9,13 +9,21 @@ use Illuminate\Support\ServiceProvider;
 use MoonShine\Contracts\Core\DependencyInjection\AppliesRegisterContract;
 use MoonShine\Laravel\Resources\ModelResource;
 use Povly\MoonshineInterventionImage\Applies\InterventionImageApply;
+use Povly\MoonshineInterventionImage\Commands\OptimizeImages;
 use Povly\MoonshineInterventionImage\Fields\InterventionImage;
 use Povly\MoonshineInterventionImage\Listeners\DeleteConvertedImageVersions;
 use Povly\MoonshineInterventionImage\Listeners\ProcessUploadedImage;
 
-final class MoonshineInterventionImageServiceProvider extends ServiceProvider
-{
-    public function boot(AppliesRegisterContract $appliesRegister): void
+    final class MoonshineInterventionImageServiceProvider extends ServiceProvider
+    {
+        public function register(): void
+        {
+            $this->commands([
+                OptimizeImages::class,
+            ]);
+        }
+
+        public function boot(AppliesRegisterContract $appliesRegister): void
     {
         $this->publishes([
             __DIR__.'/../../config/moonshine-intervention-image.php' => config_path('moonshine-intervention-image.php'),

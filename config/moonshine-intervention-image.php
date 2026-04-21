@@ -152,4 +152,21 @@ return [
         'stroke_width' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_STROKE_WIDTH', 2),
         'angle' => env('MOONSHINE_INTERVENTION_IMAGE_WATERMARK_TEXT_ANGLE'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Optimize Command Settings
+    |--------------------------------------------------------------------------
+    |
+    | Default settings for the `moonshine:image:optimize` Artisan command.
+    |
+    | disk: Default storage disk to scan for images
+    | exclude_paths: Paths to exclude from optimization (relative to disk root)
+    |
+    */
+
+    'optimize' => [
+        'disk' => env('MOONSHINE_INTERVENTION_IMAGE_OPTIMIZE_DISK', 'public'),
+        'exclude_paths' => [],
+    ],
 ];
