@@ -1,4 +1,18 @@
 # MoonShine Intervention Image Field
+
+> **⚠️ This package is no longer maintained.**
+>
+> Use these two packages instead:
+>
+> - **[yurizoom/moonshine-media-manager](https://github.com/yurizoom/moonshine-media-manager)** — file manager
+> - **[povly/moonshine-image-editor](https://github.com/povly/moonshine-image-editor)** — visual image editor with optimization and WebP/AVIF conversion
+>
+> ```bash
+> composer require yurizoom/moonshine-media-manager povly/moonshine-image-editor
+> ```
+
+---
+
 Image optimization and WebP/AVIF conversion field for MoonShine using [intervention/image](https://image.intervention.io/).
 ## Installation
 ```bash
